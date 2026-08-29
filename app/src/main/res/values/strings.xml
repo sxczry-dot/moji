@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">默记</string>
+    <string name="widget_title">本月结余</string>
+    <string name="widget_expense_label">支出</string>
+    <string name="widget_income_label">收入</string>
+    <string name="widget_placeholder">¥0.00</string>
+    <string name="widget_quick_label">记一笔</string>
+    <string name="shortcut_add">记一笔</string>
+    <string name="shortcut_list">看账单</string>
+</resources>

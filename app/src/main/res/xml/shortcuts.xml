@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="quick_add"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_add"
+        android:shortcutShortLabel="@string/shortcut_add"
+        android:shortcutLongLabel="@string/shortcut_add">
+        <intent
+            android:action="com.autobook.app.action.QUICK_ADD"
+            android:targetPackage="com.autobook.app"
+            android:targetClass="com.autobook.app.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_list"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_list"
+        android:shortcutShortLabel="@string/shortcut_list"
+        android:shortcutLongLabel="@string/shortcut_list">
+        <intent
+            android:action="com.autobook.app.action.OPEN_LIST"
+            android:targetPackage="com.autobook.app"
+            android:targetClass="com.autobook.app.MainActivity" />
+    </shortcut>
+</shortcuts>
