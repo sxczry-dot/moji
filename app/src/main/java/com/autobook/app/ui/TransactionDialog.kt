@@ -266,28 +266,28 @@ fun TransactionDialog(
                     }
                 }
 
-                if (tx != null) {
-                    Spacer(Modifier.height(12.dp))
-                    androidx.compose.material3.HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                Spacer(Modifier.height(12.dp))
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp)
                     )
-                    Spacer(Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            androidx.compose.material.icons.Icons.Outlined.Schedule,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(13.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "时间：${com.autobook.app.util.formatTime(editTimestamp)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.weight(1f)
-                        )
-                        TextButton(onClick = { showTimePicker = true }) { Text("修改") }
-                    }
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "时间：${com.autobook.app.util.formatTime(editTimestamp)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { showTimePicker = true }) { Text("修改") }
+                }
+                if (tx != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             androidx.compose.material.icons.Icons.Outlined.Hub,
@@ -452,7 +452,6 @@ fun TransactionDialog(
                                 onConfirmAgain(amount, type, fullCategory, merchant, tags, editTimestamp, book)
                                 amountText = ""
                                 amountError = false
-                                editTimestamp = System.currentTimeMillis()
                                 dialogScope.launch { amountFocus.requestFocus() }
                             }
                         }

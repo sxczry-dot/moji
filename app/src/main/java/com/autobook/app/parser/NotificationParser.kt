@@ -103,8 +103,10 @@ object NotificationParser {
         """(?:支出|消费|收入|付款|支付|退款|交易|转账|实付|已扣|还款)[^0-9¥￥]{0,6}[-－]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"""
     )
 
+    private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
+
     private fun extractAmount(text: String): Double? {
-        val cleaned = text.replace(",", "").replace("支付宝", "")
+        val cleaned = text.replace(",", "").replace("支付宝", "").replace(rebateAmountRegex, "")
         val contextual = contextualAmountRegex.find(cleaned)
         if (contextual != null) {
             return contextual.groupValues[1].toDoubleOrNull()

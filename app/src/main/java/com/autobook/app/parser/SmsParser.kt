@@ -65,12 +65,15 @@ object SmsParser {
         return bankNumbers.any { digits.startsWith(it) }
     }
 
+    private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
+
     private fun extractAmount(body: String): Double? {
-        val prefixed = prefixedAmountRegex.find(body)
+        val cleanedBody = body.replace(rebateAmountRegex, "")
+        val prefixed = prefixedAmountRegex.find(cleanedBody)
         if (prefixed != null) {
             return prefixed.groupValues[1].replace(",", "").toDoubleOrNull()
         }
-        val match = amountRegex.find(body) ?: return null
+        val match = amountRegex.find(cleanedBody) ?: return null
         return match.groupValues[1].replace(",", "").toDoubleOrNull()
     }
 
