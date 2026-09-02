@@ -12,3 +12,10 @@ local.properties
 *.aab
 .tmp/
 keystore.properties
+
+# 归档文件夹
+签名/
+安装包/
+图标素材/
+截图/
+发布文案/
