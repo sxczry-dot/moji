@@ -77,7 +77,7 @@ object NotificationParser {
         val weakMarketingWords = listOf("积分", "待领取", "点击领取", "限时")
         if (weakMarketingWords.any { full.contains(it) } &&
             !full.contains("¥") && !full.contains("￥") &&
-            contextualAmountRegex.find(textForAmount) == null
+            yuanAmountRegex.find(textForAmount) == null
         ) return null
 
         val amount = extractAmount(c) ?: extractAmount(t) ?: return null
@@ -105,8 +105,13 @@ object NotificationParser {
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
 
+    private val yuanAmountRegex = Regex("""(\d+(?:\.\d{1,2})?)\s*元""")
+
     private fun extractAmount(text: String): Double? {
         val cleaned = text.replace(",", "").replace("支付宝", "").replace(rebateAmountRegex, "")
+        yuanAmountRegex.find(cleaned)?.let { m ->
+            m.groupValues[1].toDoubleOrNull()?.let { return it }
+        }
         val contextual = contextualAmountRegex.find(cleaned)
         if (contextual != null) {
             return contextual.groupValues[1].toDoubleOrNull()
