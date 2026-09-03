@@ -63,7 +63,11 @@ object NotificationParser {
         ) return null
         if (packageName == ALIPAY_PKG && !t.contains("支付宝") && !t.contains("支付") &&
             !t.contains("花呗") && !t.contains("还款")
-        ) return null
+        ) {
+            val hasTradeInText = yuanAmountRegex.find(c) != null &&
+                paymentKeywords.any { c.contains(it) }
+            if (!hasTradeInText) return null
+        }
         if (packageName == UNIONPAY_PKG && !t.contains("云闪付") && !t.contains("银联")) return null
 
         val financialWords = listOf("零钱通", "余额宝", "理财通", "理财", "申购", "赎回", "基金", "国债", "定期存款", "大额存单")
