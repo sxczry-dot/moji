@@ -18,6 +18,10 @@ object SmsParser {
         "入账", "存入", "转入", "转账收入", "收到转账", "退款", "工资", "收入", "汇入", "到账"
     )
 
+    private val incomeToAccountRegex = Regex(
+        """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)"""
+    )
+
     private val amountRegex = Regex("""(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*元""")
 
     private val contextualAmountRegex = Regex(
@@ -25,10 +29,11 @@ object SmsParser {
     )
 
     private val prefixedAmountRegex = Regex(
-        """(?:人民币|RMB|[¥￥])\s*[-－]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"""
+        """(?:人民币|RMB|[¥￥])\s*[-－]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?!\d)"""
     )
 
     private val merchantPatterns = listOf(
+        Regex("""^(.{2,20}?)于.{0,16}?向您"""),
         Regex("""在(.{1,20}?)(?:支付|消费|购买|缴纳)"""),
         Regex("""向(.{1,20}?)(?:完成|支付|消费|购买)"""),
         Regex("""(?:商户|商家)[：:]\s*(.{1,20})"""),
@@ -41,7 +46,8 @@ object SmsParser {
         if (listOf("优惠券", "立减", "满减", "抽奖", "待领取", "点击领取", "礼包", "邀您").any { body.contains(it) }) return null
         val isStrongExpense = listOf("支出", "消费", "扣款", "取款", "划出").any { body.contains(it) }
         val isExpense = expenseKeywords.any { body.contains(it) }
-        val isIncome = incomeKeywords.any { body.contains(it) } && !isStrongExpense
+        val isIncome = (incomeKeywords.any { body.contains(it) } ||
+            incomeToAccountRegex.containsMatchIn(body)) && !isStrongExpense
         if (!isExpense && !isIncome) return null
 
         val isBank = isBankSender(sender)
@@ -77,11 +83,16 @@ object SmsParser {
         return match.groupValues[1].replace(",", "").toDoubleOrNull()
     }
 
+    private val bracketRegex = Regex("""【[^】]*】""")
+
+    private fun isAccountPlaceholder(name: String): Boolean =
+        name.contains("尾号") || name.contains("余额") || name == "您"
+
     private fun extractMerchant(body: String): String {
         for (p in merchantPatterns) {
             val m = p.find(body) ?: continue
-            val name = m.groupValues[1].trim()
-            if (name.isNotEmpty()) return name
+            val name = m.groupValues[1].replace(bracketRegex, "").trim()
+            if (name.isNotEmpty() && !isAccountPlaceholder(name)) return name
         }
         return ""
     }
