@@ -64,7 +64,7 @@ fun LearnedRulesDialog(onDismiss: () -> Unit) {
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = category,
+                                    text = com.autobook.app.data.Categories.primaryOf(category),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

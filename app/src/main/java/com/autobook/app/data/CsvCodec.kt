@@ -119,24 +119,13 @@ object CsvCodec {
 
     private fun normalizeCategory(raw: String, type: Int): String {
         val name = raw.trim()
-        if (type == Transaction.TYPE_INCOME) {
-            val stripped = name
-                .removePrefix("${Categories.INCOME}/")
-                .removePrefix("${Categories.INCOME}-")
-                .trim()
-            if (stripped.isEmpty() || stripped == Categories.INCOME) return Categories.INCOME
-            return "${Categories.INCOME}/$stripped"
-        }
+        if (type == Transaction.TYPE_INCOME) return Categories.INCOME
         if (name.isEmpty()) return Categories.OTHER
         val parts = name.split("/", "-", "－", "—", "·")
             .map { it.trim() }
             .filter { it.isNotEmpty() }
-        if (parts.size >= 2) {
-            return "${normalizePrimary(parts[0])}/${parts[1]}"
-        }
-        Categories.mapLegacy(name).takeIf { it != name }?.let { return it }
-        val primary = normalizePrimary(name)
-        return if (primary == name) name else "$primary/$name"
+        if (parts.size >= 2) return normalizePrimary(parts[0])
+        return normalizePrimary(name)
     }
 
     private fun normalizePrimary(name: String): String {

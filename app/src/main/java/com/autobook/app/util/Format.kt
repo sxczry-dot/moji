@@ -58,4 +58,4 @@ fun filterAmountInput(raw: String): String {
     }
 }
 
-fun formatCategory(category: String): String = category.replace("/", " · ")
+fun formatCategory(category: String): String = com.autobook.app.data.Categories.primaryOf(category)

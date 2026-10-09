@@ -83,11 +83,6 @@ fun TransactionDialog(
             }
         )
     }
-    var subCategory by remember {
-        mutableStateOf(
-            tx?.category?.takeIf { it.contains('/') }?.substringAfter('/')
-        )
-    }
     var merchant by remember { mutableStateOf(tx?.merchant ?: "") }
     var tags by remember { mutableStateOf(tx?.tags ?: "") }
     var showCalculator by remember { mutableStateOf(false) }
@@ -128,12 +123,6 @@ fun TransactionDialog(
     val books = remember {
         com.autobook.app.util.AppSettings.getBooks(context)
     }
-    val customChildren = com.autobook.app.util.AppSettings.getCustomChildren(context, category)
-    val children = if (type == Transaction.TYPE_INCOME) {
-        Categories.incomeChildren + customChildren
-    } else {
-        Categories.childrenOf(category, customChildren)
-    }
 
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
@@ -149,7 +138,6 @@ fun TransactionDialog(
                         onClick = {
                             type = Transaction.TYPE_EXPENSE
                             if (category == Categories.INCOME) category = Categories.FOOD
-                            subCategory = null
                         },
                         shape = SegmentedButtonDefaults.itemShape(0, 2)
                     ) { Text("支出") }
@@ -158,7 +146,6 @@ fun TransactionDialog(
                         onClick = {
                             type = Transaction.TYPE_INCOME
                             category = Categories.INCOME
-                            subCategory = null
                         },
                         shape = SegmentedButtonDefaults.itemShape(1, 2)
                     ) { Text("收入") }
@@ -386,7 +373,6 @@ fun TransactionDialog(
                                         indication = LocalIndication.current
                                     ) {
                                         category = group.name
-                                        subCategory = null
                                     }
                                     .padding(vertical = 10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -409,34 +395,6 @@ fun TransactionDialog(
                             }
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
-                    Text(
-                        text = "选择子分类",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                if (children.isNotEmpty()) {
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        FilterChip(
-                            selected = subCategory == null,
-                            onClick = { subCategory = null },
-                            label = { Text("不细分") },
-                            modifier = Modifier.padding(end = 6.dp)
-                        )
-                        children.forEach { child ->
-                            FilterChip(
-                                selected = subCategory == child,
-                                onClick = { subCategory = child },
-                                label = { Text(child) },
-                                modifier = Modifier.padding(end = 6.dp)
-                            )
-                        }
-                    }
                 }
             }
         },
@@ -448,8 +406,7 @@ fun TransactionDialog(
                             if (amount == null || amount <= 0 || amount > Transaction.MAX_AMOUNT) {
                                 amountError = true
                             } else {
-                                val fullCategory = subCategory?.let { "$category/$it" } ?: category
-                                onConfirmAgain(amount, type, fullCategory, merchant, tags, editTimestamp, book)
+                                onConfirmAgain(amount, type, category, merchant, tags, editTimestamp, book)
                                 amountText = ""
                                 amountError = false
                                 dialogScope.launch { amountFocus.requestFocus() }
@@ -462,8 +419,7 @@ fun TransactionDialog(
                         if (amount == null || amount <= 0 || amount > Transaction.MAX_AMOUNT) {
                             amountError = true
                         } else {
-                            val fullCategory = subCategory?.let { "$category/$it" } ?: category
-                            onConfirm(amount, type, fullCategory, merchant, tags, editTimestamp, book)
+                            onConfirm(amount, type, category, merchant, tags, editTimestamp, book)
                         }
                     }
                 ) { Text("保存") }

@@ -27,11 +27,15 @@ object TransactionSaver {
 
             val learned = if (parsed.merchant.isNotBlank()) {
                 com.autobook.app.util.AppSettings.getLearnedCategory(context, parsed.merchant)
+                    ?.let { com.autobook.app.data.Categories.primaryOf(it) }
             } else null
+            val classifyText = listOf(parsed.merchant, parsed.rawText, source)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
             val category = learned ?: if (parsed.type == Transaction.TYPE_EXPENSE) {
-                CategoryClassifier.classifyExpense(parsed.merchant + " " + source)
+                CategoryClassifier.classifyExpense(classifyText)
             } else {
-                CategoryClassifier.classifyIncome(parsed.merchant + " " + source)
+                CategoryClassifier.classifyIncome(classifyText)
             }
             val tx = Transaction(
                 amount = parsed.amount,

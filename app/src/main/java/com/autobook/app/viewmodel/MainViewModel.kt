@@ -125,7 +125,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addManual(amount: Double, type: Int, category: String, merchant: String, tags: String, timestamp: Long = System.currentTimeMillis(), book: String? = null) {
         if (merchant.isNotBlank()) {
-            AppSettings.learnCategory(getApplication(), merchant, category)
+            AppSettings.learnCategory(getApplication(), merchant, com.autobook.app.data.Categories.primaryOf(category))
         }
         viewModelScope.launch(Dispatchers.IO) {
             repo.add(
@@ -162,7 +162,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         book: String? = null
     ) {
         val learnedMerchant = merchant.ifBlank { tx.merchant }
-        AppSettings.learnCategory(getApplication(), learnedMerchant, category)
+        AppSettings.learnCategory(getApplication(), learnedMerchant, com.autobook.app.data.Categories.primaryOf(category))
         viewModelScope.launch(Dispatchers.IO) {
             repo.update(
                 tx.copy(

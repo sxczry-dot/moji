@@ -116,7 +116,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var showNotifLog by remember { mutableStateOf(false) }
     var showYearReport by remember { mutableStateOf(false) }
     var showExport by remember { mutableStateOf(false) }
-    var showCategoryManage by remember { mutableStateOf(false) }
     var showLearnedRules by remember { mutableStateOf(false) }
     var showCustomColor by remember { mutableStateOf(false) }
     var showMergeMerchants by remember { mutableStateOf(false) }
@@ -1004,17 +1003,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         Text("年度报告")
                     }
                     Spacer(Modifier.width(12.dp))
-                    OutlinedButton(onClick = { showCategoryManage = true }, modifier = Modifier.width(150.dp)) {
-                        Icon(
-                            androidx.compose.material.icons.Icons.Outlined.Category,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text("分类管理")
-                    }
-                    Spacer(Modifier.width(12.dp))
                     OutlinedButton(onClick = { showLearnedRules = true }, modifier = Modifier.width(150.dp)) {
                         Icon(
                             androidx.compose.material.icons.Icons.Outlined.Lightbulb,
@@ -1354,7 +1342,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.88\n" +
+                                        "应用版本：4.89\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1371,7 +1359,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.88",
+            text = "默记 v4.89",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1466,10 +1454,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
     if (showYearReport) {
         YearReportDialog(onDismiss = { showYearReport = false })
-    }
-
-    if (showCategoryManage) {
-        CategoryManageDialog(onDismiss = { showCategoryManage = false })
     }
 
     if (showLearnedRules) {

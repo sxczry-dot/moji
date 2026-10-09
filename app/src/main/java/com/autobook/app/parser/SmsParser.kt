@@ -44,6 +44,7 @@ object SmsParser {
         if (body.contains("验证码")) return null
         if (listOf("零钱通", "余额宝", "理财通", "理财", "申购", "赎回", "基金", "国债").any { body.contains(it) }) return null
         if (listOf("优惠券", "立减", "满减", "抽奖", "待领取", "点击领取", "礼包", "邀您").any { body.contains(it) }) return null
+        if (listOf("共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单", "账单出炉").any { body.contains(it) }) return null
         val isStrongExpense = listOf("支出", "消费", "扣款", "取款", "划出").any { body.contains(it) }
         val isExpense = expenseKeywords.any { body.contains(it) }
         val isIncome = (incomeKeywords.any { body.contains(it) } ||

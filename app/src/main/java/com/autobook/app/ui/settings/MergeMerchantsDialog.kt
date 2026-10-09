@@ -148,7 +148,7 @@ fun MergeMerchantsDialog(onDismiss: () -> Unit) {
                         if (AppSettings.getLearnedCategory(context, target) == null) {
                             froms.firstNotNullOfOrNull {
                                 AppSettings.getLearnedCategory(context, it)
-                            }?.let { cat -> AppSettings.learnCategory(context, target, cat) }
+                            }?.let { cat -> AppSettings.learnCategory(context, target, com.autobook.app.data.Categories.primaryOf(cat)) }
                         }
                         froms.forEach { from ->
                             AppSettings.removeLearned(context, from)

@@ -73,6 +73,9 @@ object NotificationParser {
         val financialWords = listOf("零钱通", "余额宝", "理财通", "理财", "申购", "赎回", "基金", "国债", "定期存款", "大额存单")
         if (financialWords.any { full.contains(it) }) return null
 
+        val summaryWords = listOf("共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单", "账单出炉")
+        if (summaryWords.any { full.contains(it) }) return null
+
         if (paymentKeywords.none { full.contains(it) }) return null
 
         val textForAmount = full.replace("支付宝", "")
