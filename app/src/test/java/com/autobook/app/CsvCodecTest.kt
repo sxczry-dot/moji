@@ -29,7 +29,7 @@ class CsvCodecTest {
 
         val income = txs[2]
         assertEquals(Transaction.TYPE_INCOME, income.type)
-        assertEquals("收入/股票", income.category)
+        assertEquals(Categories.INCOME, income.category)
     }
 
     @Test
@@ -38,16 +38,16 @@ class CsvCodecTest {
             "餐饮" to "餐饮美食",
             "购物" to "购物消费",
             "美容" to "美容护理",
-            "学习" to "教育学习/学习",
+            "学习" to "教育学习",
             "交通" to "交通出行",
             "医疗" to "医疗健康",
             "通讯" to "通讯网络",
-            "服饰" to "购物消费/服饰",
-            "饮水" to "餐饮美食/饮水",
-            "水果" to "餐饮美食/水果",
-            "社交" to "人情社交/社交",
-            "亲友" to "人情社交/亲友",
-            "数码" to "购物消费/数码",
+            "服饰" to "购物消费",
+            "饮水" to "餐饮美食",
+            "水果" to "餐饮美食",
+            "社交" to "人情社交",
+            "亲友" to "人情社交",
+            "数码" to "购物消费",
             "娱乐" to "娱乐休闲"
         )
         for ((raw, expected) in cases) {
@@ -61,11 +61,11 @@ class CsvCodecTest {
     fun `收入类别往返导入不叠加前缀`() {
         val csv = "$sharkHeader\n\"2026年08月01日\",\"收入\",\"收入/工资\",\"5000\",\"\"\n"
         val txs = CsvCodec.decode(csv)
-        assertEquals("收入/工资", txs[0].category)
+        assertEquals(Categories.INCOME, txs[0].category)
 
         val csv2 = "$sharkHeader\n\"2026年08月01日\",\"收入\",\"工资\",\"5000\",\"\"\n"
         val txs2 = CsvCodec.decode(csv2)
-        assertEquals("收入/工资", txs2[0].category)
+        assertEquals(Categories.INCOME, txs2[0].category)
     }
 
     @Test
@@ -80,6 +80,7 @@ class CsvCodecTest {
 
     @Test
     fun `导出再导入往返一致`() {
+        // 旧格式带子分类，导入后按 v4.89 规则归一为大分类
         val original = listOf(
             Transaction(amount = 25.5, type = Transaction.TYPE_EXPENSE, category = "餐饮/外卖", merchant = "美团,外卖", source = "微信", timestamp = 1755916200000L),
             Transaction(amount = 5000.0, type = Transaction.TYPE_INCOME, category = "收入/工资", merchant = "工资", source = "短信", timestamp = 1755916300000L)
@@ -87,9 +88,9 @@ class CsvCodecTest {
         val encoded = CsvCodec.encode(original)
         val decoded = CsvCodec.decode(encoded)
         assertEquals(2, decoded.size)
-        assertEquals("餐饮美食/外卖", decoded[0].category)
+        assertEquals("餐饮美食", decoded[0].category)
         assertEquals("美团,外卖", decoded[0].merchant)
-        assertEquals("收入/工资", decoded[1].category)
+        assertEquals(Categories.INCOME, decoded[1].category)
         assertEquals(5000.0, decoded[1].amount, 0.001)
         assertEquals(Transaction.TYPE_INCOME, decoded[1].type)
     }
