@@ -1,4 +1,4 @@
-import java.util.Properties
+﻿import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -21,8 +21,8 @@ android {
         applicationId = "com.autobook.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 140
-        versionName = "4.94"
+        versionCode = 141
+        versionName = "4.95"
         resConfigs("zh")
     }
 
@@ -98,3 +98,4 @@ ksp {
     // Robolectric 迁移测试经 AssetManager 读取
     arg("room.schemaLocation", "$projectDir/src/test/assets")
 }
+

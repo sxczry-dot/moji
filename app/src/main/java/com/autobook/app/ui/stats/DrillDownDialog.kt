@@ -66,7 +66,8 @@ fun DrillDownDialog(
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    transactions.sortedByDescending { it.timestamp }.forEach { tx ->
+                    // 明细按金额从多到少排序
+                    transactions.sortedByDescending { it.amount }.forEach { tx ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()

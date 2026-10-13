@@ -1,4 +1,4 @@
-﻿package com.autobook.app.ui.list
+package com.autobook.app.ui.list
 
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut

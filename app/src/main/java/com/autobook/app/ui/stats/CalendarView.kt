@@ -194,7 +194,8 @@ private fun DayDetailDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
-                dayTxs.sortedByDescending { it.timestamp }.forEach { tx ->
+                // 日明细按金额从多到少排序
+                dayTxs.sortedByDescending { it.amount }.forEach { tx ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
