@@ -32,8 +32,18 @@ data class Transaction(
         const val SOURCE_SMS = "短信"
         const val SOURCE_RECURRING = "周期"
 
+        // 退款标记（存 tags）：识别出的退款收入 + 已关联到原消费的退款
+        const val TAG_REFUND = "退款"
+        const val TAG_REFUND_LINKED = "关联退款"
+
         }
 }
+
+fun Transaction.isRefund(): Boolean =
+    tags.split(Regex("\\s+")).any { it == Transaction.TAG_REFUND }
+
+fun List<Transaction>.refundSum(): Double =
+    filter { it.type == Transaction.TYPE_INCOME && it.isRefund() }.sumOf { it.amount }
 
 fun List<Transaction>.expenseSum(): Double =
     filter { it.type == Transaction.TYPE_EXPENSE }.sumOf { it.amount }

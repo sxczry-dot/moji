@@ -31,6 +31,7 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.refundSum
 import com.autobook.app.util.TimeUtils
 import com.autobook.app.util.formatAmount
 import com.autobook.app.viewmodel.MainViewModel
@@ -58,6 +59,8 @@ fun YearReportDialog(onDismiss: () -> Unit) {
         .groupBy { Categories.primaryOf(it.category) }
         .maxByOrNull { (_, list) -> list.sumOf { it.amount } }
 
+    val yearRefund = yearTxs.refundSum()
+
     val topMerchant = yearTxs
         .filter { it.type == Transaction.TYPE_EXPENSE && it.merchant.isNotBlank() }
         .groupBy { it.merchant }
@@ -83,6 +86,16 @@ fun YearReportDialog(onDismiss: () -> Unit) {
                     "全年支出", "¥${formatAmount(totalExpense)}",
                     androidx.compose.material.icons.Icons.Outlined.TrendingDown
                 )
+                if (yearRefund > 0) {
+                    ReportLine(
+                        "全年退款", "¥${formatAmount(yearRefund)}",
+                        androidx.compose.material.icons.Icons.Outlined.TrendingUp
+                    )
+                    ReportLine(
+                        "全年净支出（扣退款）", "¥${formatAmount(totalExpense - yearRefund)}",
+                        androidx.compose.material.icons.Icons.Outlined.TrendingDown
+                    )
+                }
                 ReportLine(
                     "全年收入", "¥${formatAmount(totalIncome)}",
                     androidx.compose.material.icons.Icons.Outlined.TrendingUp

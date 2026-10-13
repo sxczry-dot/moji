@@ -10,6 +10,25 @@ object TransactionSaver {
 
     val redPacketDeductionRegex = Regex("""使用\d+(?:\.\d{1,2})?元红包|红包抵扣|抵扣红包|红包立减""")
 
+    /** 纯函数：识别退款类收入（含"退款/退回"的入账；"退款支出"方向已由解析器判为支出，不会被误标） */
+    fun isRefundTransaction(type: Int, rawText: String, merchant: String): Boolean =
+        type == Transaction.TYPE_INCOME &&
+            (rawText.contains("退款") || rawText.contains("退回") || merchant.contains("退款"))
+
+    /** 查找近 30 天内同账本、同金额（±0.02）的支出记录，用于退款关联 */
+    private suspend fun hasRefundTarget(parsed: ParsedResult): Boolean {
+        val now = System.currentTimeMillis()
+        val txs = AutoBookApp.instance.repository.getByRangeOnce(
+            com.autobook.app.util.AppSettings.DEFAULT_BOOK,
+            now - 30L * 24 * 3600 * 1000,
+            now
+        )
+        return txs.any {
+            it.type == Transaction.TYPE_EXPENSE &&
+                kotlin.math.abs(it.amount - parsed.amount) < Transaction.AMOUNT_EPSILON
+        }
+    }
+
     sealed class Outcome {
         data object Inserted : Outcome()
         data object Duplicate : Outcome()
@@ -41,6 +60,12 @@ object TransactionSaver {
             } else {
                 CategoryClassifier.classifyIncome(classifyText)
             }
+            // 退款净口径：识别退款并关联原消费（标记存 tags，不改变金额与方向）
+            var tags = ""
+            if (isRefundTransaction(parsed.type, parsed.rawText, parsed.merchant)) {
+                tags = Transaction.TAG_REFUND
+                if (hasRefundTarget(parsed)) tags += " " + Transaction.TAG_REFUND_LINKED
+            }
             val tx = Transaction(
                 amount = parsed.amount,
                 type = parsed.type,
@@ -49,7 +74,8 @@ object TransactionSaver {
                 source = source,
                 timestamp = if (parsed.tradeTime in 1..now) parsed.tradeTime else now,
                 book = com.autobook.app.util.AppSettings.DEFAULT_BOOK,
-                refNo = parsed.refNo
+                refNo = parsed.refNo,
+                tags = tags
             )
 
             when (val result = repo.insertAndGetMonth(tx, now)) {

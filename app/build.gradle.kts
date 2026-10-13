@@ -21,9 +21,16 @@ android {
         applicationId = "com.autobook.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 136
-        versionName = "4.90"
+        versionCode = 137
+        versionName = "4.91"
         resConfigs("zh")
+    }
+
+    testOptions {
+        unitTests {
+            // Robolectric 跑 Room 迁移测试需要 Android 资源
+            isIncludeAndroidResources = true
+        }
     }
 
     signingConfigs {
@@ -80,4 +87,14 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("androidx.room:room-testing:2.6.1")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core-ktx:1.6.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+}
+
+ksp {
+    // Room schema 导出：直接生成到单测资产目录（KSP 会自动追加数据库类名子目录），
+    // Robolectric 迁移测试经 AssetManager 读取
+    arg("room.schemaLocation", "$projectDir/src/test/assets")
 }

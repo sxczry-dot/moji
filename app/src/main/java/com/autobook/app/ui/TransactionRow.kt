@@ -53,6 +53,7 @@ import com.autobook.app.util.formatTime
 import com.autobook.app.util.formatCategory
 import com.autobook.app.util.formatAmount
 import com.autobook.app.data.Transaction
+import com.autobook.app.data.isRefund
 import com.autobook.app.ui.theme.ExpenseRed
 import com.autobook.app.ui.theme.IncomeBlue
 import kotlinx.coroutines.launch
@@ -290,6 +291,21 @@ fun TransactionRow(
                         fontWeight = FontWeight.Medium,
                         maxLines = 1
                     )
+                    if (tx.isRefund()) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(IncomeBlue.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = Transaction.TAG_REFUND,
+                                fontSize = 10.sp,
+                                color = IncomeBlue
+                            )
+                        }
+                    }
 
                 }
                 Text(

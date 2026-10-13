@@ -2,11 +2,14 @@ package com.autobook.app
 
 import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
+import com.autobook.app.data.refundSum
 import com.autobook.app.parser.CategoryClassifier
 import com.autobook.app.parser.NotificationParser
 import com.autobook.app.parser.SmsParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -326,5 +329,36 @@ class ParserRegressionTest {
             Categories.SHOPPING,
             CategoryClassifier.classifyExpense("京东 $stripped")
         )
+    }
+
+    // ===== v4.91 退款净口径 =====
+
+    @Test
+    fun `退款识别纯函数`() {
+        val saver = com.autobook.app.service.TransactionSaver
+        assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "退款人民币50.00元已到账", ""))
+        assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "订单已退回", "拼多多"))
+        assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "收到转账500元", "退款"))
+        assertFalse(saver.isRefundTransaction(Transaction.TYPE_EXPENSE, "退款支出10元", ""))
+        assertFalse(saver.isRefundTransaction(Transaction.TYPE_INCOME, "收到转账500.00元", ""))
+    }
+
+    @Test
+    fun `退款合计只统计退款收入`() {
+        val txs = listOf(
+            Transaction(
+                amount = 50.0, type = Transaction.TYPE_INCOME, category = "收入",
+                merchant = "", source = "短信", timestamp = 0L, tags = Transaction.TAG_REFUND
+            ),
+            Transaction(
+                amount = 30.0, type = Transaction.TYPE_INCOME, category = "收入",
+                merchant = "", source = "短信", timestamp = 0L
+            ),
+            Transaction(
+                amount = 80.0, type = Transaction.TYPE_EXPENSE, category = "购物消费",
+                merchant = "", source = "短信", timestamp = 0L
+            )
+        )
+        assertEquals(50.0, txs.refundSum(), 0.001)
     }
 }

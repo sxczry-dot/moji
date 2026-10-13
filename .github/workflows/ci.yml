@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: 单元测试 + 编译验证
@@ -35,8 +39,18 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest
 
+      - name: 展示测试报告
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: 'app/build/test-results/testDebugUnitTest/*.xml'
+          fail_on_failure: true
+
       - name: 编译 Debug APK（整体编译验证）
         run: ./gradlew assembleDebug
+
+      - name: 静态检查（只拦新增问题）
+        run: ./gradlew lintDebug
 
       - name: 上传测试报告
         if: always()
@@ -44,4 +58,12 @@ jobs:
         with:
           name: test-reports
           path: app/build/reports/tests/testDebugUnitTest/
+          if-no-files-found: ignore
+
+      - name: 上传 lint 报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore

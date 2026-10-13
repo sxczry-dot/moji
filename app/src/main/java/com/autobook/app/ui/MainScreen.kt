@@ -61,20 +61,20 @@ fun MainScreen() {
     var scrollTopTick by remember { mutableIntStateOf(0) }
     var statsTick by remember { mutableIntStateOf(0) }
 
+    val viewModel: com.autobook.app.viewmodel.MainViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        com.autobook.app.MainActivity.openTabRequests.collect { tab ->
+        viewModel.openTabRequest.collect { tab ->
             if (tab >= 0) {
                 selected = tab
-                // 消费后复位，避免每次进入组合（解锁/切页回来）都被拉回指定 tab
-                com.autobook.app.MainActivity.openTabRequests.value = -1
+                viewModel.consumeOpenTab()
             }
         }
     }
     androidx.compose.runtime.LaunchedEffect(selected) {
         if (selected == 1) statsTick++
     }
-    val viewModel: com.autobook.app.viewmodel.MainViewModel =
-        androidx.lifecycle.viewmodel.compose.viewModel()
     val fontScale by viewModel.fontScale.collectAsStateWithLifecycle()
 
     val density = LocalDensity.current

@@ -20,6 +20,10 @@ class TransactionRepository(context: Context) {
         return dao.getByRangeOnce(book, start, end)
     }
 
+    /** 按时间戳区间取某账本的记录（退款关联等场景用） */
+    suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction> =
+        dao.getByRangeOnce(book, start, end)
+
     suspend fun add(tx: Transaction) {
         // 补到达时间：让手动/周期记录参与自动记账的去重候选池，避免与通知重复记账
         dao.insert(tx.copy(insertedAt = System.currentTimeMillis()))

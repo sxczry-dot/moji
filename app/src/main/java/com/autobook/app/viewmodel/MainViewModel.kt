@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.YearMonth
@@ -43,6 +44,40 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _darkMode = MutableStateFlow(AppSettings.getDarkMode(app))
     val darkMode: StateFlow<Int> = _darkMode
+
+    // ===== 一次性事件（写入 + 显式消费语义；Activity 只负责 post，UI 消费后复位）=====
+    private val _openTabRequest = MutableStateFlow(-1)
+    val openTabRequest: StateFlow<Int> = _openTabRequest
+
+    private val _quickAddRequest = MutableStateFlow(0)
+    val quickAddRequest: StateFlow<Int> = _quickAddRequest
+
+    private val _editRequest = MutableStateFlow(-1L)
+    val editRequest: StateFlow<Long> = _editRequest
+
+    fun postOpenTab(tab: Int) {
+        _openTabRequest.value = tab
+    }
+
+    fun consumeOpenTab() {
+        _openTabRequest.value = -1
+    }
+
+    fun postQuickAdd() {
+        _quickAddRequest.value++
+    }
+
+    fun consumeQuickAdd() {
+        _quickAddRequest.value = 0
+    }
+
+    fun postEdit(id: Long) {
+        _editRequest.value = id
+    }
+
+    fun consumeEdit() {
+        _editRequest.value = -1L
+    }
 
     val monthTransactions: StateFlow<List<Transaction>> =
         combine(_currentBook, _currentMonth) { book, ym -> book to ym }
@@ -97,18 +132,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val lastSixMonths: StateFlow<List<MonthStat>> =
         combine(allTransactions, _currentMonth, _currentBook) { txs, ym, book ->
             // 按当前账本过滤：近6月图/环比不能混入其他账本
-            val bookTxs = txs.filter { it.book == book }
-            (5 downTo 0).map { offset ->
-                val m = ym.minusMonths(offset.toLong())
-                val (start, end) = TimeUtils.monthRange(m.year, m.monthValue - 1)
-                val inMonth = bookTxs.filter { it.timestamp in start until end }
-                MonthStat(
-                    yearMonth = m,
-                    expense = inMonth.expenseSum(),
-                    income = inMonth.incomeSum()
-                )
-            }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+            com.autobook.app.ui.stats.StatsCalculator.monthStats(
+                txs.filter { it.book == book }, ym
+            )
+        }.flowOn(Dispatchers.Default) // 聚合计算离开主线程，数据量大时不卡 UI
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun setMonth(ym: YearMonth) {
         _currentMonth.value = ym

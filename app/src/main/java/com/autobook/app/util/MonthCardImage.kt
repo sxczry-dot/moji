@@ -164,12 +164,12 @@ object MonthCardImage {
     }
 
     fun saveToGallery(context: Context, bitmap: Bitmap): String? {
-        val name = "默记账单_${System.currentTimeMillis()}.png"
+        val name = "默记账单_${System.currentTimeMillis()}.jpg"
         return try {
             if (Build.VERSION.SDK_INT >= 29) {
                 val values = ContentValues().apply {
                     put(MediaStore.Images.Media.DISPLAY_NAME, name)
-                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                    put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
                     put(
                         MediaStore.Images.Media.RELATIVE_PATH,
                         "Pictures/默记"
@@ -183,7 +183,8 @@ object MonthCardImage {
                     val out = context.contentResolver.openOutputStream(uri)
                         ?: throw java.io.IOException("无法打开输出流")
                     out.use { stream ->
-                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                        // JPEG 90：文件体积远小于 PNG100，视觉无损
+                        bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
                     }
                     val done = ContentValues().apply {
                         put(MediaStore.Images.Media.IS_PENDING, 0)
@@ -201,7 +202,7 @@ object MonthCardImage {
                 ).apply { mkdirs() }
                 val file = java.io.File(dir, name)
                 file.outputStream().use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
                 }
                 file.absolutePath
             }

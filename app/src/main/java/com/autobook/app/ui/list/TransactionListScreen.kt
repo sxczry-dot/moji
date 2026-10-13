@@ -132,19 +132,19 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        com.autobook.app.MainActivity.quickAddRequests.collect { tick ->
+        viewModel.quickAddRequest.collect { tick ->
             if (tick > 0) {
                 showAddDialog = true
                 // 消费后复位，避免切页/解锁后对话框反复弹出
-                com.autobook.app.MainActivity.quickAddRequests.value = 0
+                viewModel.consumeQuickAdd()
             }
         }
     }
     androidx.compose.runtime.LaunchedEffect(Unit) {
-        com.autobook.app.MainActivity.editRequests.collect { id ->
+        viewModel.editRequest.collect { id ->
             if (id > 0) {
                 pendingEditId = id
-                com.autobook.app.MainActivity.editRequests.value = -1L
+                viewModel.consumeEdit()
             }
         }
     }

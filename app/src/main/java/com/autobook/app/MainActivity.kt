@@ -3,6 +3,7 @@ package com.autobook.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : androidx.fragment.app.FragmentActivity() {
+
+    // 事件总线根治：Activity 与 Compose 共用同一 ViewModel，事件写入走 post*()、UI 消费后复位，
+    // 不再使用 companion MutableStateFlow（StateFlow 无消费语义，是"请求只增不减/解锁被拉回 tab"类 bug 的根源）
+    private val viewModel: com.autobook.app.viewmodel.MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,13 +115,13 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
 
     private fun handleIntent(intent: android.content.Intent) {
         if (intent.getBooleanExtra("quick_add", false)) {
-            quickAddRequests.value++
+            viewModel.postQuickAdd()
         }
         intent.getLongExtra("edit_tx_id", -1L).let {
-            if (it > 0) editRequests.value = it
+            if (it > 0) viewModel.postEdit(it)
         }
         intent.getIntExtra("open_tab", -1).let {
-            if (it >= 0) openTabRequests.value = it
+            if (it >= 0) viewModel.postOpenTab(it)
         }
         if (intent.action == "open_notification_settings") {
             startActivity(
@@ -125,16 +130,8 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
             )
         }
         when (intent.action) {
-            "com.autobook.app.action.QUICK_ADD" -> quickAddRequests.value++
-            "com.autobook.app.action.OPEN_LIST" -> openTabRequests.value = 0
+            "com.autobook.app.action.QUICK_ADD" -> viewModel.postQuickAdd()
+            "com.autobook.app.action.OPEN_LIST" -> viewModel.postOpenTab(0)
         }
-    }
-
-    companion object {
-        val quickAddRequests = kotlinx.coroutines.flow.MutableStateFlow(0)
-
-        val editRequests = kotlinx.coroutines.flow.MutableStateFlow(-1L)
-
-        val openTabRequests = kotlinx.coroutines.flow.MutableStateFlow(-1)
     }
 }

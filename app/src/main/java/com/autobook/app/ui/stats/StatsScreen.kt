@@ -60,9 +60,11 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.refundSum
 import com.autobook.app.ui.CategoryUi
 import com.autobook.app.ui.theme.ExpenseRed
 import com.autobook.app.ui.theme.PrimaryGreen
+import com.autobook.app.ui.theme.IncomeBlue
 import com.autobook.app.ui.MonthPickerLabel
 import com.autobook.app.ui.charts.BarChart
 import com.autobook.app.ui.charts.PieChart
@@ -91,16 +93,18 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
     }
     val displayTxs = if (dataMode == 0) monthTxs else yearTxs
 
-    val categoryExpense = remember(displayTxs) {
-        displayTxs
-            .filter { it.type == Transaction.TYPE_EXPENSE }
-            .groupBy { Categories.primaryOf(it.category) }
-            .map { (cat, txs) -> cat to txs.sumOf { it.amount } }
-            .sortedByDescending { it.second }
+    val categoryExpense by androidx.compose.runtime.produceState(
+        initialValue = emptyList<Pair<String, Double>>(), displayTxs
+    ) {
+        // 聚合计算放到后台线程，数据量大时不卡 UI
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            StatsCalculator.categoryExpense(displayTxs)
+        }
     }
 
     val totalExpense = remember(categoryExpense) { categoryExpense.sumOf { it.second } }
     val totalIncome = remember(displayTxs) { displayTxs.incomeSum() }
+    val refundTotal = remember(displayTxs) { displayTxs.refundSum() }
 
     val listState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
         androidx.compose.foundation.lazy.LazyListState()
@@ -283,6 +287,23 @@ Row(verticalAlignment = Alignment.CenterVertically) {
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                                if (refundTotal > 0) {
+                                    Spacer(Modifier.height(2.dp))
+                                    Text(
+                                        text = if (hideAmount) {
+                                            "净支出 ****"
+                                        } else {
+                                            "净支出 ${formatAmountGrouped(totalExpense - refundTotal)}"
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = if (hideAmount) "退款 ****" else "退款 ${formatAmountGrouped(refundTotal)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = IncomeBlue
+                                    )
+                                }
                             }
                         }
                         Spacer(Modifier.height(20.dp))
@@ -961,12 +982,13 @@ private fun MerchantRankCard(
     statsTick: Int = 0,
     onDrill: (String) -> Unit
 ) {
-    val topMerchants = displayTxs
-        .filter { it.type == Transaction.TYPE_EXPENSE && it.merchant.isNotBlank() }
-        .groupBy { it.merchant }
-        .map { (m, list) -> m to list.sumOf { it.amount } }
-        .sortedByDescending { it.second }
-        .take(5)
+    val topMerchants by androidx.compose.runtime.produceState(
+        initialValue = emptyList<Pair<String, Double>>(), displayTxs
+    ) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            StatsCalculator.merchantRanking(displayTxs, 5)
+        }
+    }
     if (topMerchants.isEmpty()) return
     // 防止 0/0=NaN（coerceIn 拦不住 NaN），进度条宽度归零
     val maxAmount = topMerchants.first().second.takeIf { it > 0 } ?: 1.0
