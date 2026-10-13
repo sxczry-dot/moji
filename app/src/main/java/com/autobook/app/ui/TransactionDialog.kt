@@ -137,7 +137,7 @@ fun TransactionDialog(
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
         onDismissRequest = onDismiss,
-        title = { Text(if (tx == null) "手动记一笔" else "编辑记录") },
+        title = { if (tx != null) Text("编辑记录") },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState())
@@ -195,7 +195,7 @@ fun TransactionDialog(
                         }
                     },
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(0.88f)
                         .padding(top = 12.dp)
                         .focusRequester(amountFocus)
                 )
@@ -212,7 +212,7 @@ fun TransactionDialog(
                         onNext = { focusManager.moveFocus(androidx.compose.ui.focus.FocusDirection.Down) }
                     ),
                     modifier = Modifier
-                        .fillMaxWidth()
+                        .fillMaxWidth(0.88f)
                         .padding(top = 12.dp)
                 )
                 if (amount != null && amount >= 1000) {
@@ -228,7 +228,8 @@ fun TransactionDialog(
                 } else {
                     topMerchants.filter { it.contains(merchant, true) && it != merchant }.take(8)
                 }
-                if (merchantSuggest.isNotEmpty()) {
+                // 历史商户建议仅编辑已有记录时展示（手动记账弹窗保持精简）
+                if (merchantSuggest.isNotEmpty() && tx != null) {
                     Text(
                         text = "历史商户",
                         style = MaterialTheme.typography.labelSmall,
@@ -247,20 +248,23 @@ fun TransactionDialog(
                     }
                 }
 
-                Text(
-                    text = "账本",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-                FlowRow(modifier = Modifier.fillMaxWidth()) {
-                    books.forEach { b ->
-                        FilterChip(
-                            selected = book == b,
-                            onClick = { book = b },
-                            label = { Text(b, fontSize = 11.sp) },
-                            modifier = Modifier.padding(end = 4.dp)
-                        )
+                // 账本选择仅编辑已有记录时展示（手动记账固定记入当前账本）
+                if (tx != null) {
+                    Text(
+                        text = "账本",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    FlowRow(modifier = Modifier.fillMaxWidth()) {
+                        books.forEach { b ->
+                            FilterChip(
+                                selected = book == b,
+                                onClick = { book = b },
+                                label = { Text(b, fontSize = 11.sp) },
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
                     }
                 }
 
@@ -273,17 +277,18 @@ fun TransactionDialog(
                     Icon(
                         androidx.compose.material.icons.Icons.Outlined.Schedule,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(13.dp)
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(17.dp)
                     )
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         text = "时间：${com.autobook.app.util.formatTime(editTimestamp)}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = { showTimePicker = true }) { Text("修改") }
+                    TextButton(onClick = { showTimePicker = true }) { Text("修改", fontSize = 13.sp) }
                 }
                 if (tx != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

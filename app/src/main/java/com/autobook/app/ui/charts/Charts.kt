@@ -150,6 +150,21 @@ fun BarChart(
                     size = Size(barWidth, if (h > 0f) h else 4f),
                     cornerRadius = CornerRadius(10f, 10f)
                 )
+                // 柱顶金额标签（顶部预留 24px 空间）
+                if (!hideValues && v > 0) {
+                    val layout = textMeasurer.measure(
+                        text = formatAmount(v),
+                        style = barTextStyle
+                    )
+                    drawText(
+                        textLayoutResult = layout,
+                        topLeft = Offset(
+                            (x + barWidth / 2f - layout.size.width / 2f)
+                                .coerceIn(0f, (size.width - layout.size.width).coerceAtLeast(0f)),
+                            (top - layout.size.height - 2f).coerceAtLeast(0f)
+                        )
+                    )
+                }
 
             }
         }

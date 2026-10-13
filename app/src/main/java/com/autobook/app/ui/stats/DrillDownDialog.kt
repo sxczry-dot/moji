@@ -60,52 +60,12 @@ fun DrillDownDialog(
                         text = "暂无记录"
                     )
                 } else {
-                    val subStats = transactions
-                        .filter { it.type == Transaction.TYPE_EXPENSE }
-                        .groupBy { it.category }
-                        .map { (cat, list) -> cat to list.sumOf { it.amount } }
-                        .sortedByDescending { it.second }
-                    val subTotal = subStats.sumOf { it.second }
-                    if (subStats.size > 1 && subTotal > 0) {
-                        Text(
-                            text = "子分类占比",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        subStats.forEach { (cat, sum) ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = com.autobook.app.util.formatCategory(cat),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    modifier = Modifier.width(110.dp)
-                                )
-                                com.autobook.app.ui.FlatProgressBar(
-                                    progress = (sum / subTotal).toFloat(),
-                                    modifier = Modifier.weight(1f),
-                                    color = com.autobook.app.ui.CategoryUi.colorOf(cat),
-                                    height = 5.dp
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = com.autobook.app.util.formatAmount(sum),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = "明细",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "明细",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     transactions.sortedByDescending { it.timestamp }.forEach { tx ->
                         Row(
                             modifier = Modifier

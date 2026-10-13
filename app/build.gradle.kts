@@ -21,8 +21,8 @@ android {
         applicationId = "com.autobook.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 139
-        versionName = "4.93"
+        versionCode = 140
+        versionName = "4.94"
         resConfigs("zh")
     }
 
