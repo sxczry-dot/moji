@@ -9,25 +9,7 @@ object NotificationParser {
     const val UNIONPAY_PKG = "com.unionpay"
     const val JD_PKG = "com.jingdong.app.mall"
 
-    val BANK_PKGS = mapOf(
-        "com.android.bankabc" to "农业银行",
-        "com.icbc" to "工商银行",
-        "com.chinamworld.main" to "建设银行",
-        "com.chinamworld.bocmbci" to "中国银行",
-        "cmb.pb" to "招商银行",
-        "com.cmbchina.ccd.pluto.cmbActivity" to "招商银行",
-        "com.bankcomm.Bankcomm" to "交通银行",
-        "com.yitong.mbank.psbc" to "邮储银行",
-        "com.ecitic.bank.mobile" to "中信银行",
-        "com.cebbank.mobile.cemb" to "光大银行",
-        "cn.com.cmbc.newmbank" to "民生银行",
-        "com.pingan.paces.ccms" to "平安银行",
-        "com.cgbchina.xpt" to "广发银行",
-        "com.cib.cibmb" to "兴业银行",
-        "cn.com.spdb.mobilebank.per" to "浦发银行",
-        "com.srcb.pmbank" to "上海银行",
-        "com.nbbank" to "宁波银行"
-    )
+    val BANK_PKGS = ParseRules.bankPackages
 
     fun bankNameOf(pkg: String): String? = BANK_PKGS[pkg]
 
@@ -41,9 +23,7 @@ object NotificationParser {
         Regex("""(.{1,20}?)(?:收款|付款)成功""")
     )
 
-    private val paymentKeywords = listOf(
-        "支付", "付款", "收款", "转账", "退款", "消费", "入账", "扣款", "支出", "交易", "还款", "缴费", "缴纳"
-    )
+    private val paymentKeywords = ParseRules.paymentKeywords
 
     private val incomeToAccountRegex = Regex(
         """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
@@ -64,11 +44,7 @@ object NotificationParser {
         ) return null
 
         if (bankNameOf(packageName) != null &&
-            !full.contains("银行") && !full.contains("支出") && !full.contains("收入") &&
-            !full.contains("消费") && !full.contains("交易") && !full.contains("支付") &&
-            !full.contains("入账") && !full.contains("收款") && !full.contains("转入") &&
-            !full.contains("退款") && !full.contains("还款") && !full.contains("到账") &&
-            !full.contains("转账") && !full.contains("缴费") && !full.contains("缴纳")
+            ParseRules.bankGateWords.none { full.contains(it) }
         ) return null
         if (packageName == ALIPAY_PKG && !t.contains("支付宝") && !t.contains("支付") &&
             !t.contains("花呗") && !t.contains("还款") && !t.contains("缴费")
@@ -79,19 +55,15 @@ object NotificationParser {
         }
         if (packageName == UNIONPAY_PKG && !t.contains("云闪付") && !t.contains("银联")) return null
 
-        val financialWords = listOf("零钱通", "余额宝", "理财通", "理财", "申购", "赎回", "基金", "国债", "定期存款", "大额存单")
-        if (financialWords.any { full.contains(it) }) return null
+        if (ParseRules.financialBlockWords.any { full.contains(it) }) return null
 
-        val summaryWords = listOf("共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单", "账单出炉")
-        if (summaryWords.any { full.contains(it) }) return null
+        if (ParseRules.summaryWords.any { full.contains(it) }) return null
 
         if (paymentKeywords.none { full.contains(it) }) return null
 
         val textForAmount = full.replace("支付宝", "")
-        val strongMarketingWords = listOf("立减金", "优惠券", "满减", "抽奖", "邀您", "礼包")
-        if (strongMarketingWords.any { full.contains(it) }) return null
-        val weakMarketingWords = listOf("积分", "待领取", "点击领取", "限时")
-        if (weakMarketingWords.any { full.contains(it) } &&
+        if (ParseRules.marketingStrongWords.any { full.contains(it) }) return null
+        if (ParseRules.marketingWeakWords.any { full.contains(it) } &&
             !full.contains("¥") && !full.contains("￥") &&
             yuanAmountRegex.find(textForAmount) == null
         ) return null
@@ -99,9 +71,9 @@ object NotificationParser {
         val amount = extractAmount(c) ?: extractAmount(t) ?: return null
         if (amount < 0.01 || amount > Transaction.MAX_AMOUNT) return null
 
-        val isStrongExpense = listOf("支出", "扣款").any { full.contains(it) }
-        val isIncome = (listOf("收款", "入账", "转入", "收到", "退款", "返现", "收入", "到账", "汇入")
-            .any { full.contains(it) } || incomeToAccountRegex.containsMatchIn(full)) &&
+        val isStrongExpense = ParseRules.strongExpenseKeywords.any { full.contains(it) }
+        val isIncome = (ParseRules.refundIncomeKeywords.any { full.contains(it) } ||
+            incomeToAccountRegex.containsMatchIn(full)) &&
             !full.contains("收款方") && !full.contains("收款人") && !isStrongExpense
         val type = if (isIncome) Transaction.TYPE_INCOME else Transaction.TYPE_EXPENSE
 
@@ -159,10 +131,7 @@ object NotificationParser {
 
     private fun extractMerchantTitle(title: String): String {
         val cleaned = title.replace("微信支付", "").replace("支付宝", "").replace("中国农业银行", "").replace("工商银行", "").replace("建设银行", "").replace("中国银行", "").replace("招商银行", "").replace("交通银行", "").replace("邮储银行", "").replace("中信银行", "").replace("光大银行", "").replace("民生银行", "").replace("平安银行", "").replace("广发银行", "").replace("兴业银行", "").replace("浦发银行", "").trim()
-        val genericTitles = setOf(
-            "交易提醒", "动账通知", "账户变动", "账户变动提醒", "消费通知",
-            "收支通知", "入账通知", "交易通知", "动账提醒", "资金变动"
-        )
+        val genericTitles = ParseRules.genericTitles
         return if (cleaned.isNotEmpty() && cleaned.length <= 20 && cleaned !in genericTitles) {
             cleaned
         } else {

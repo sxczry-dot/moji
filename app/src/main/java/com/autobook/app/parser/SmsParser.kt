@@ -4,19 +4,11 @@ import com.autobook.app.data.Transaction
 
 object SmsParser {
 
-    private val bankNumbers = listOf(
-        "95588", "95533", "95555", "95566", "95599", "95568", "95528",
-        "95558", "95577", "95561", "95501", "95595", "95508", "95559",
-        "95511", "95516", "95580", "95594", "96699", "95567"
-    )
+    private val bankNumbers = ParseRules.smsBankNumbers
 
-    private val expenseKeywords = listOf(
-        "消费", "支出", "支付", "扣款", "取款", "转账支出", "划出", "代扣", "交易", "转账", "还款"
-    )
+    private val expenseKeywords = ParseRules.smsExpenseKeywords
 
-    private val incomeKeywords = listOf(
-        "入账", "存入", "转入", "转账收入", "收到转账", "退款", "工资", "收入", "汇入", "到账"
-    )
+    private val incomeKeywords = ParseRules.smsIncomeKeywords
 
     private val incomeToAccountRegex = Regex(
         """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
@@ -43,10 +35,10 @@ object SmsParser {
 
     fun parse(sender: String, body: String): ParsedResult? {
         if (body.contains("验证码")) return null
-        if (listOf("零钱通", "余额宝", "理财通", "理财", "申购", "赎回", "基金", "国债").any { body.contains(it) }) return null
-        if (listOf("优惠券", "立减", "满减", "抽奖", "待领取", "点击领取", "礼包", "邀您").any { body.contains(it) }) return null
-        if (listOf("共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单", "账单出炉").any { body.contains(it) }) return null
-        val isStrongExpense = listOf("支出", "消费", "扣款", "取款", "划出").any { body.contains(it) }
+        if (ParseRules.smsFinanceBlockWords.any { body.contains(it) }) return null
+        if (ParseRules.smsMarketingWords.any { body.contains(it) }) return null
+        if (ParseRules.summaryWords.any { body.contains(it) }) return null
+        val isStrongExpense = ParseRules.smsStrongExpenseKeywords.any { body.contains(it) }
         val isExpense = expenseKeywords.any { body.contains(it) }
         // "消费退款/退货退款" 等含"退款"的短信是收入；只有"退款支出"类才按支出处理
         val hasRefundIncome = body.contains("退款") && !body.contains("退款支出")

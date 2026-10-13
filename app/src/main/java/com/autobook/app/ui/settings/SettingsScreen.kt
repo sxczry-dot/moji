@@ -1360,7 +1360,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.92\n" +
+                                        "应用版本：4.93\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1377,7 +1377,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.92",
+            text = "默记 v4.93",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1807,178 +1807,4 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         )
     }
 }
-
-@Composable
-private fun CustomColorDialog(
-    initial: Long,
-    onConfirm: (Long) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var r by remember { mutableStateOf(((initial shr 16) and 0xFFL).toInt().toFloat()) }
-    var g by remember { mutableStateOf(((initial shr 8) and 0xFFL).toInt().toFloat()) }
-    var b by remember { mutableStateOf((initial and 0xFFL).toInt().toFloat()) }
-    val preview = androidx.compose.ui.graphics.Color(r / 255f, g / 255f, b / 255f)
-
-    AlertDialog(
-        shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
-        onDismissRequest = onDismiss,
-        title = { Text("自定义颜色") },
-        text = {
-            Column {
-                androidx.compose.foundation.layout.Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(60.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(preview)
-                )
-                Spacer(Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("红", modifier = Modifier.width(32.dp))
-                    androidx.compose.material3.Slider(
-                        value = r,
-                        onValueChange = { r = it },
-                        valueRange = 0f..255f,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("绿", modifier = Modifier.width(32.dp))
-                    androidx.compose.material3.Slider(
-                        value = g,
-                        onValueChange = { g = it },
-                        valueRange = 0f..255f,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("蓝", modifier = Modifier.width(32.dp))
-                    androidx.compose.material3.Slider(
-                        value = b,
-                        onValueChange = { b = it },
-                        valueRange = 0f..255f,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    val color = 0xFF000000L or
-                        (r.toInt() shl 16).toLong() or
-                        (g.toInt() shl 8).toLong() or
-                        b.toInt().toLong()
-                    onConfirm(color)
-                }
-            ) { Text("确定") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
-        }
-    )
-}
-
-@Composable
-private fun PermissionRow(
-    title: String,
-    granted: Boolean,
-    actionLabel: String?,
-    onAction: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = if (granted) "✓" else "✗",
-            color = if (granted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            style = MaterialTheme.typography.bodyLarge,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(24.dp)
-        )
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
-        if (actionLabel != null) {
-            OutlinedButton(onClick = onAction) {
-                Text(actionLabel)
-            }
-        } else {
-            Text(
-                text = "已开启",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
-}
-
-
-private fun decodeBytes(bytes: ByteArray): String {
-    if (bytes.isEmpty()) return ""
-    val text = try {
-        Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes))
-            .toString()
-    } catch (_: Exception) {
-        String(bytes, charset("GBK"))
-    }
-    return text.removePrefix("\uFEFF")
-}
-
-@Composable
-private fun StatItem(
-    label: String,
-    value: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier
-) {
-    Column(modifier) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(12.dp)
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-}
-
-private const val MAX_IMPORT_BYTES = 10 * 1024 * 1024
-
-private fun readLimited(context: Context, uri: android.net.Uri): ByteArray? {
-    return context.contentResolver.openInputStream(uri)?.use { input ->
-        val buffer = java.io.ByteArrayOutputStream()
-        val chunk = ByteArray(8192)
-        var total = 0
-        while (true) {
-            val n = input.read(chunk)
-            if (n < 0) break
-            total += n
-            if (total > MAX_IMPORT_BYTES) return null
-            buffer.write(chunk, 0, n)
-        }
-        buffer.toByteArray()
-    }
-}
-
 
