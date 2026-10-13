@@ -1,4 +1,4 @@
-﻿package com.autobook.app.ui.stats
+package com.autobook.app.ui.stats
 
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -94,11 +94,10 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
     }
     val displayTxs = if (dataMode == 0) monthTxs else yearTxs
 
-    val categoryExpense by androidx.compose.runtime.produceState(
-        initialValue = emptyList<Pair<String, Double>>(), displayTxs
-    ) {
+    var categoryExpense by remember { mutableStateOf(emptyList<Pair<String, Double>>()) }
+    androidx.compose.runtime.LaunchedEffect(displayTxs) {
         // 聚合计算放到后台线程，数据量大时不卡 UI
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+        categoryExpense = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             StatsCalculator.categoryExpense(displayTxs)
         }
     }

@@ -1,4 +1,4 @@
-﻿package com.autobook.app.ui.stats
+package com.autobook.app.ui.stats
 
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
@@ -322,10 +322,11 @@ fun MerchantRankCard(
     statsTick: Int = 0,
     onDrill: (String) -> Unit
 ) {
-    val topMerchants by androidx.compose.runtime.produceState(
-        initialValue = emptyList<Pair<String, Double>>(), displayTxs
-    ) {
-        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+    var topMerchants by androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(emptyList<Pair<String, Double>>())
+    }
+    androidx.compose.runtime.LaunchedEffect(displayTxs) {
+        topMerchants = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             StatsCalculator.merchantRanking(displayTxs, 5)
         }
     }
