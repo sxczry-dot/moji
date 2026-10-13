@@ -8,10 +8,11 @@ import java.util.Locale
 
 object CsvCodec {
 
-    private val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
     private const val HEADER = "金额,类型,分类,商户,来源,时间,标签,账本"
 
     fun encode(transactions: List<Transaction>): String {
+        // 时间含毫秒：导入去重按精确时间戳比对，丢毫秒会导致重新导入必重复
+        val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.CHINA)
         val sb = StringBuilder(HEADER).append("\n")
         transactions.sortedBy { it.timestamp }.forEach { tx ->
             sb.append(escape(formatAmount(tx.amount))).append(",")
@@ -26,17 +27,26 @@ object CsvCodec {
         return sb.toString()
     }
 
-    fun decode(content: String): List<Transaction> {
-        val lines = content.lineSequence()
-            .filter { it.isNotBlank() }
+    fun decode(
+        content: String,
+        defaultBook: String = com.autobook.app.util.AppSettings.DEFAULT_BOOK
+    ): List<Transaction> {
+        // 引号内换行按字段内容处理，而非记录分隔（先统一行尾再按引号状态合并物理行）
+        val lines = splitCsvLines(
+            content.replace("\r\n", "\n").replace('\r', '\n')
+        )
             .map { parseLine(it) }
             .toList()
         if (lines.isEmpty()) return emptyList()
 
         val header = lines.first()
-        val hasHeader = header.any { it.contains("金额") || it.contains("分类") || it.contains("备注") }
+        val hasHeader = header.any {
+            it.contains("金额") || it.contains("分类") || it.contains("备注") ||
+                it.contains("amount", true) || it.contains("category", true) ||
+                it.contains("date", true)
+        }
         if (!hasHeader) {
-            return lines.mapNotNull { parseTransaction(it) }
+            return lines.mapNotNull { parseTransaction(it, defaultBook) }
         }
         val columns = buildColumnMap(header)
         if (!columns.containsKey("金额") &&
@@ -45,7 +55,32 @@ object CsvCodec {
             return emptyList()
         }
         val rows = lines.subList(1, lines.size)
-        return rows.mapNotNull { parseWithColumns(it, columns) }
+        return rows.mapNotNull { parseWithColumns(it, columns, defaultBook) }
+    }
+
+    private fun splitCsvLines(content: String): List<String> {
+        val result = mutableListOf<String>()
+        val sb = StringBuilder()
+        var inQuotes = false
+        content.forEach { ch ->
+            when {
+                ch == '"' -> {
+                    sb.append(ch)
+                    inQuotes = !inQuotes
+                }
+                ch == '\n' -> {
+                    if (inQuotes) {
+                        sb.append('\n')
+                    } else {
+                        result.add(sb.toString())
+                        sb.clear()
+                    }
+                }
+                else -> sb.append(ch)
+            }
+        }
+        if (sb.isNotEmpty()) result.add(sb.toString())
+        return result
     }
 
     private fun buildColumnMap(header: List<String>): Map<String, Int> {
@@ -75,15 +110,25 @@ object CsvCodec {
         return map
     }
 
-    private fun parseWithColumns(fields: List<String>, columns: Map<String, Int>): Transaction? {
+    private fun parseWithColumns(
+        fields: List<String>,
+        columns: Map<String, Int>,
+        defaultBook: String
+    ): Transaction? {
         fun cell(key: String): String =
             columns[key]?.let { idx -> fields.getOrNull(idx)?.trim() ?: "" } ?: ""
 
         var amount: Double
         var type: Int
         if (columns.containsKey("金额")) {
-            amount = parseAmount(cell("金额")) ?: return null
-            type = parseType(cell("类型"))
+            val rawAmount = parseAmount(cell("金额")) ?: return null
+            // 负数金额（银行流水常见：负=支出）：取绝对值；有类型列时以类型列为准
+            type = if (columns.containsKey("类型") && cell("类型").isNotBlank()) {
+                parseType(cell("类型"))
+            } else {
+                Transaction.TYPE_EXPENSE
+            }
+            amount = kotlin.math.abs(rawAmount)
         } else {
             val income = parseAmount(cell("收入金额"))
             val expense = parseAmount(cell("支出金额"))
@@ -104,7 +149,13 @@ object CsvCodec {
         val category = normalizeCategory(cell("分类"), type)
         val merchant = cell("商户").ifEmpty { category }
         val source = cell("来源")
-        val timestamp = parseTimeFlexible(cell("时间")) ?: System.currentTimeMillis()
+        // 时间列存在但解析失败的行跳过（避免"当前时间"兜底导致重复导入翻倍）；时间列缺失才用导入时刻
+        val timeCell = cell("时间")
+        val timestamp = if (timeCell.isBlank()) {
+            System.currentTimeMillis()
+        } else {
+            parseTimeFlexible(timeCell) ?: return null
+        }
         return Transaction(
             amount = amount,
             type = type,
@@ -113,7 +164,7 @@ object CsvCodec {
             source = source,
             timestamp = timestamp,
             tags = cell("标签"),
-            book = cell("账本").ifEmpty { com.autobook.app.util.AppSettings.DEFAULT_BOOK }
+            book = cell("账本").ifEmpty { defaultBook }
         )
     }
 
@@ -148,9 +199,10 @@ object CsvCodec {
         }
     }
 
-    private fun parseTransaction(fields: List<String>): Transaction? {
+    private fun parseTransaction(fields: List<String>, defaultBook: String): Transaction? {
         if (fields.size < 6) return null
-        val amount = fields[0].trim().replace(",", "").toDoubleOrNull() ?: return null
+        val rawAmount = fields[0].trim().replace(",", "").toDoubleOrNull() ?: return null
+        val amount = kotlin.math.abs(rawAmount)
         if (amount <= 0 || amount > Transaction.MAX_AMOUNT) return null
         val type = if (fields[1].trim() in listOf("收入", "1")) {
             Transaction.TYPE_INCOME
@@ -160,7 +212,7 @@ object CsvCodec {
         val category = normalizeCategory(fields[2], type)
         val merchant = fields[3].trim().ifEmpty { category }
         val source = fields[4].trim()
-        val timestamp = parseTime(fields[5].trim()) ?: System.currentTimeMillis()
+        val timestamp = parseTime(fields[5].trim()) ?: return null
         return Transaction(
             amount = amount,
             type = type,
@@ -169,7 +221,7 @@ object CsvCodec {
             source = source,
             timestamp = timestamp,
             tags = fields.getOrNull(6)?.trim() ?: "",
-            book = fields.getOrNull(7)?.trim()?.ifEmpty { com.autobook.app.util.AppSettings.DEFAULT_BOOK } ?: com.autobook.app.util.AppSettings.DEFAULT_BOOK
+            book = fields.getOrNull(7)?.trim()?.ifEmpty { defaultBook } ?: defaultBook
         )
     }
 
@@ -202,6 +254,7 @@ object CsvCodec {
     }
 
     private fun parseTime(text: String): Long? {
+        val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA)
         return try {
             timeFormat.parse(text)?.time
         } catch (_: Exception) {
@@ -210,9 +263,13 @@ object CsvCodec {
     }
 
     private val flexibleTimeFormats = listOf(
+        SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.CHINA),
         SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.CHINA),
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA),
         SimpleDateFormat("yyyy-MM-dd", Locale.CHINA),
+        SimpleDateFormat("yyyy-M-d HH:mm:ss", Locale.CHINA),
+        SimpleDateFormat("yyyy-M-d HH:mm", Locale.CHINA),
+        SimpleDateFormat("yyyy-M-d", Locale.CHINA),
         SimpleDateFormat("yyyy/M/d HH:mm:ss", Locale.CHINA),
         SimpleDateFormat("yyyy/M/d HH:mm", Locale.CHINA),
         SimpleDateFormat("yyyy/M/d", Locale.CHINA),

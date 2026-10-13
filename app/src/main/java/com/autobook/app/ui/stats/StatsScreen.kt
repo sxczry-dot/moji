@@ -200,7 +200,9 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
             val lastYearEnd = (lastYearStart.clone() as java.util.Calendar).apply {
                 add(java.util.Calendar.DAY_OF_YEAR, 1)
             }
-            val lastYearTodayTxs = remember(allTxs, currentBook) {
+            // 日期区间纳入 remember 键：跨午夜（无新交易时）"去年的今天"也会刷新
+            val lastYearKey = "${lastYearStart.timeInMillis}_${lastYearEnd.timeInMillis}"
+            val lastYearTodayTxs = remember(allTxs, currentBook, lastYearKey) {
                 allTxs.filter {
                     it.timestamp in lastYearStart.timeInMillis until lastYearEnd.timeInMillis &&
                         it.book == currentBook
@@ -223,7 +225,7 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
 
         if (viewMode == 1) {
             item {
-                CalendarMonthView(displayTxs, currentMonth, yearMode = dataMode == 1)
+                CalendarMonthView(displayTxs, currentMonth, yearMode = dataMode == 1, hideAmount = hideAmount)
                 Spacer(Modifier.height(16.dp))
             }
         } else {
@@ -530,10 +532,13 @@ Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = {
                                 scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                                    cardPreview = com.autobook.app.util.MonthCardImage.render(
+                                    val newBmp = com.autobook.app.util.MonthCardImage.render(
                                         context, currentMonth, displayTxs,
                                         yearMode = dataMode == 1
                                     )
+                                    // 回收上一张预览位图，避免连续生成时累积大块内存
+                                    cardPreview?.takeIf { !it.isRecycled }?.recycle()
+                                    cardPreview = newBmp
                                 }
                             }
                         ) { Text("卡片图", fontSize = 11.sp) }
@@ -639,6 +644,10 @@ Row(verticalAlignment = Alignment.CenterVertically) {
     }
 
     cardPreview?.let { bmp ->
+        // 对话框退出组合后回收位图
+        androidx.compose.runtime.DisposableEffect(bmp) {
+            onDispose { if (!bmp.isRecycled) bmp.recycle() }
+        }
         androidx.compose.material3.AlertDialog(
             shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             onDismissRequest = { cardPreview = null },
@@ -959,7 +968,8 @@ private fun MerchantRankCard(
         .sortedByDescending { it.second }
         .take(5)
     if (topMerchants.isEmpty()) return
-    val maxAmount = topMerchants.first().second
+    // 防止 0/0=NaN（coerceIn 拦不住 NaN），进度条宽度归零
+    val maxAmount = topMerchants.first().second.takeIf { it > 0 } ?: 1.0
     val merchantAnim = remember(statsTick) {
         androidx.compose.animation.core.Animatable(0f)
     }

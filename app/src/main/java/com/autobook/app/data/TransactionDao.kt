@@ -16,6 +16,21 @@ interface TransactionDao {
     @Insert
     suspend fun insertAll(txs: List<Transaction>)
 
+    /** CSV 导入：补到达时间 + 空来源兜底，让导入记录参与自动记账的去重候选池 */
+    @androidx.room.Transaction
+    suspend fun insertAllImported(txs: List<Transaction>) {
+        val now = System.currentTimeMillis()
+        insertAll(txs.map { it.copy(insertedAt = now, source = it.source.ifEmpty { "导入" }) })
+    }
+
+    /** 备份恢复：单事务内完成删+插，避免中途失败造成全部数据丢失 */
+    @androidx.room.Transaction
+    suspend fun replaceAll(txs: List<Transaction>) {
+        val now = System.currentTimeMillis()
+        deleteAll()
+        insertAll(txs.map { it.copy(insertedAt = now, source = it.source.ifEmpty { "导入" }) })
+    }
+
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     suspend fun getAllOnce(): List<Transaction>
 

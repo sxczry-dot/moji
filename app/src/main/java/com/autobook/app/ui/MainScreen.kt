@@ -63,7 +63,11 @@ fun MainScreen() {
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         com.autobook.app.MainActivity.openTabRequests.collect { tab ->
-            if (tab >= 0) selected = tab
+            if (tab >= 0) {
+                selected = tab
+                // 消费后复位，避免每次进入组合（解锁/切页回来）都被拉回指定 tab
+                com.autobook.app.MainActivity.openTabRequests.value = -1
+            }
         }
     }
     androidx.compose.runtime.LaunchedEffect(selected) {

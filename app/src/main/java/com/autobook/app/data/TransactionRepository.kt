@@ -26,12 +26,11 @@ class TransactionRepository(context: Context) {
     }
 
     suspend fun addAll(txs: List<Transaction>) {
-        dao.insertAll(txs)
+        dao.insertAllImported(txs)
     }
 
     suspend fun replaceAll(txs: List<Transaction>) {
-        dao.deleteAll()
-        dao.insertAll(txs)
+        dao.replaceAll(txs)
     }
 
     suspend fun getAllOnce(): List<Transaction> = dao.getAllOnce()

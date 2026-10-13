@@ -101,8 +101,9 @@ fun NotifLogDialog(onDismiss: () -> Unit) {
             Row {
                 TextButton(
                     onClick = {
+                        // 复制当前筛选下的内容，与所见一致
                         clipboard.setText(
-                            androidx.compose.ui.text.AnnotatedString(logs.joinToString("\n"))
+                            androidx.compose.ui.text.AnnotatedString(visibleLogs.joinToString("\n"))
                         )
                     }
                 ) { Text("复制") }

@@ -223,4 +223,108 @@ class ParserRegressionTest {
             CategoryClassifier.classifyExpense("物业费代收")
         )
     }
+
+    // ===== 2026-10 深度审查修复的回归 =====
+
+    @Test
+    fun `消费退款短信记收入`() {
+        val r = SmsParser.parse(
+            "95555",
+            "您尾号1234信用卡8月23日消费退款人民币50.00元，余额1,234.56元。"
+        )
+        assertEquals(50.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, r.type)
+    }
+
+    @Test
+    fun `退款支出短信仍记支出`() {
+        val r = SmsParser.parse(
+            "95555",
+            "您尾号1234信用卡8月23日退款支出人民币10.00元，余额1,234.56元。"
+        )
+        assertEquals(10.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `银行App推送向您账户完成交易记收入`() {
+        val r = NotificationParser.parse(
+            "com.android.bankabc",
+            "中国农业银行",
+            "山东省立医院门诊于09月12日15:20向您尾号3174账户完成财付通交易人民币385.01，余额1,189.03。"
+        )
+        assertEquals(385.01, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, r.type)
+        assertEquals("山东省立医院门诊", r.merchant)
+    }
+
+    @Test
+    fun `三位小数金额不膨胀不误记`() {
+        // 修复前 "消费12.345元" 会回溯匹配 "345元" 记成 345.00；现在应拒记（不取错误金额）
+        assertNull(
+            SmsParser.parse(
+                "95588",
+                "您尾号1234卡8月23日消费12.345元。"
+            )
+        )
+    }
+
+    @Test
+    fun `生活缴费通知记账`() {
+        val r = NotificationParser.parse(
+            NotificationParser.WECHAT_PKG,
+            "生活缴费",
+            "您的水费已缴纳成功，缴费金额38.00元。"
+        )
+        assertEquals(38.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `原价金额不干扰实付金额`() {
+        val r = NotificationParser.parse(
+            NotificationParser.ALIPAY_PKG,
+            "支付宝",
+            "已支付¥38.00（原价58.00元）"
+        )
+        assertEquals(38.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `信用卡还款短信记账`() {
+        val r = SmsParser.parse(
+            "95555",
+            "您尾号1234信用卡8月23日还款人民币500.00元，当前余额1,234.56元。"
+        )
+        assertEquals(500.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `超16位单号取真实尾6位`() {
+        assertEquals(
+            "567890",
+            com.autobook.app.util.RefNoParser.parse("交易号202608241234567890")
+        )
+    }
+
+    @Test
+    fun `时间带分后缀仍能解析`() {
+        val reference = 1_752_000_000_000L // 2026-07-09 附近
+        val t = com.autobook.app.util.TradeTimeParser.parse(" 15:20分，", reference)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = t }
+        assertEquals(15, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(20, cal.get(java.util.Calendar.MINUTE))
+    }
+
+    @Test
+    fun `抵扣红包文案从分类文本中剔除`() {
+        val stripped = com.autobook.app.service.TransactionSaver.redPacketDeductionRegex
+            .replace("使用5元红包，实付38.00元", "")
+        assertEquals(
+            Categories.SHOPPING,
+            CategoryClassifier.classifyExpense("京东 $stripped")
+        )
+    }
 }

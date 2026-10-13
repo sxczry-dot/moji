@@ -57,19 +57,19 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                             com.autobook.app.util.AppSettings.isOnboarded(this@MainActivity)
                         )
                     }
-                    var lockUnlocked by androidx.compose.runtime.remember {
-                        androidx.compose.runtime.mutableStateOf(false)
-                    }
-                    var everPaused by androidx.compose.runtime.remember {
+                    // 解锁状态用 saveable：配置变更（如深色模式切换）重建后保持解锁；
+                    // 退后台/进程死亡时在 onPauseOrDispose 中重置为 false，锁不失效
+                    var lockUnlocked by androidx.compose.runtime.saveable.rememberSaveable {
                         androidx.compose.runtime.mutableStateOf(false)
                     }
                     androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
-                        if (everPaused &&
-                            com.autobook.app.util.AppSettings.isAppLockEnabled(this@MainActivity)
-                        ) {
-                            lockUnlocked = false
+                        onPauseOrDispose {
+                            if (!this@MainActivity.isChangingConfigurations &&
+                                com.autobook.app.util.AppSettings.isAppLockEnabled(this@MainActivity)
+                            ) {
+                                lockUnlocked = false
+                            }
                         }
-                        onPauseOrDispose { everPaused = true }
                     }
                     androidx.compose.animation.AnimatedContent(
                         targetState = onboarded,

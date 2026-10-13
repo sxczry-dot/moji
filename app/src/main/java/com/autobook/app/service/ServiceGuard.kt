@@ -52,7 +52,7 @@ object ServiceGuard {
             context.contentResolver,
             "enabled_notification_listeners"
         ) ?: return false
-        return flat.split(":").any { it.startsWith(context.packageName) }
+        return flat.split(":").any { it.substringBefore('/') == context.packageName }
     }
 
     fun requestRebind(context: Context) {

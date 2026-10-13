@@ -82,9 +82,15 @@ object MonthCardImage {
         canvas.drawText(if (yearMode) "全年结余" else "本月结余", WIDTH / 2f, 320f, whiteDim)
 
         val balanceText = "¥" + formatAmountGrouped(balance)
-        white.textSize = 116f
+        var balanceSize = 116f
+        white.textSize = balanceSize
         white.isFakeBoldText = true
         white.textAlign = Paint.Align.CENTER
+        // 大额结余自动缩字号，避免超出画布被裁切
+        while (white.measureText(balanceText) > WIDTH - 120f && balanceSize > 44f) {
+            balanceSize -= 4f
+            white.textSize = balanceSize
+        }
         canvas.drawText(balanceText, WIDTH / 2f, 470f, white)
 
         whiteDim.textSize = 40f
@@ -133,7 +139,7 @@ object MonthCardImage {
             }
             whiteDim2.textSize = 34f
             whiteDim2.textAlign = Paint.Align.LEFT
-            canvas.drawText("$i. $cat", 140f, y, whiteDim2)
+            canvas.drawText("${i + 1}. $cat", 140f, y, whiteDim2)
             val barLeft = 420f
             val barWidth = (amount / maxCat).toFloat() * 400f
             canvas.drawRoundRect(
@@ -168,14 +174,27 @@ object MonthCardImage {
                         MediaStore.Images.Media.RELATIVE_PATH,
                         "Pictures/默记"
                     )
+                    put(MediaStore.Images.Media.IS_PENDING, 1)
                 }
                 val uri = context.contentResolver.insert(
                     MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values
                 ) ?: return null
-                context.contentResolver.openOutputStream(uri)?.use { out ->
-                    bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                try {
+                    val out = context.contentResolver.openOutputStream(uri)
+                        ?: throw java.io.IOException("无法打开输出流")
+                    out.use { stream ->
+                        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+                    }
+                    val done = ContentValues().apply {
+                        put(MediaStore.Images.Media.IS_PENDING, 0)
+                    }
+                    context.contentResolver.update(uri, done, null, null)
+                    uri.toString()
+                } catch (e: Exception) {
+                    // 写入失败删除残留条目，避免相册出现空文件
+                    context.contentResolver.delete(uri, null, null)
+                    throw e
                 }
-                uri.toString()
             } else {
                 val dir = java.io.File(
                     context.getExternalFilesDir(null), "默记账单"

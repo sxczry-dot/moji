@@ -147,6 +147,8 @@ fun RecurringDialog(onDismiss: () -> Unit) {
                             ) { Text(if (rule.paused) "继续" else "暂停", fontSize = 12.sp) }
                             TextButton(
                                 onClick = {
+                                    // 清理该规则的完成标记，避免重建同名规则被残留标记抑制
+                                    AppSettings.clearRecurringDone(context, rule)
                                     rules = rules.filterIndexed { i, _ -> i != index }
                                     AppSettings.saveRecurringRules(context, rules)
                                 },
@@ -245,12 +247,18 @@ private fun AddRecurringRuleDialog(
 
     val amount = amountText.toDoubleOrNull() ?: 0.0
     val day = dayText.toIntOrNull() ?: 0
+    val maxAnnualDay = when (annualMonth) {
+        2 -> 29 // 2月允许29（闰年执行，非闰年钳制到28）
+        4, 6, 9, 11 -> 30
+        else -> 31
+    }
     val valid = name.isNotBlank() && amount > 0 && amount <= Transaction.MAX_AMOUNT && when (period) {
         0 -> day in 1..28
         1 -> day in 1..7
         2 -> true
-        else -> annualMonth in 1..12 && annualDay in 1..31
+        else -> annualMonth in 1..12 && annualDay in 1..maxAnnualDay
     }
+    val annualDayInvalid = period == 3 && annualMonth in 1..12 && annualDay !in 1..maxAnnualDay
 
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
@@ -385,13 +393,20 @@ private fun AddRecurringRuleDialog(
                 Text(
                     text = when (period) {
                         0 -> "提示：每月 29-31 日请选 28 日，或选「月末」模式"
-                        1 -> "提示：1=周一 … 7=周日，错过当天会在本周内补记"
+                        1 -> "提示：1=周一 … 7=周日，仅在当天执行（应用运行时自动检查）"
                         2 -> "提示：每月最后一天自动记，自动适配 28/29/30/31 天"
-                        else -> "提示：每年这一天自动记一次（如 9 月 3 日）"
+                        else -> "提示：每年这一天自动记一次（如 9 月 3 日；2月29日在非闰年记到2月28日）"
                     },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (annualDayInvalid) {
+                    Text(
+                        text = "${annualMonth}月没有 $annualDay 日，请重新输入",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
             }
         },
         confirmButton = {
@@ -405,6 +420,8 @@ private fun AddRecurringRuleDialog(
                         }
                         onConfirm(
                             RecurringRule(
+                                // 编辑保留稳定 id，添加生成新 id（id 是完成标记 key 的一部分）
+                                id = initial?.id ?: System.currentTimeMillis(),
                                 name = name.trim(),
                                 amount = amount,
                                 type = type,

@@ -8,6 +8,8 @@ object DedupChecker {
     const val MERCHANT_MATCH_WINDOW_MS = 90_000L
     const val CROSS_SOURCE_WINDOW_MS = 180_000L
     const val SAME_SOURCE_WINDOW_MS = 10_000L
+    // 同渠道且双方都未识别到商户名时，只按 3 秒判重（避免吞掉两笔同金额的不同商户真实交易）
+    const val SAME_SOURCE_UNKNOWN_MERCHANT_WINDOW_MS = 3_000L
 
     // 通知没提取到商户名时，入库用渠道名兜底（如"微信"），这种不算真实商户名
     private fun merchantKey(tx: Transaction): String {
@@ -29,7 +31,7 @@ object DedupChecker {
                 return existingKey == txKey &&
                     abs(existing.timestamp - tx.timestamp) < SAME_SOURCE_WINDOW_MS
             }
-            return abs(existing.timestamp - tx.timestamp) < SAME_SOURCE_WINDOW_MS
+            return abs(existing.timestamp - tx.timestamp) < SAME_SOURCE_UNKNOWN_MERCHANT_WINDOW_MS
         }
         if (existingKey.isNotEmpty() && txKey.isNotEmpty()) {
             return existingKey == txKey &&

@@ -52,7 +52,8 @@ private fun dayOf(timestamp: Long): Int =
 fun CalendarMonthView(
     txs: List<Transaction>,
     yearMonth: YearMonth,
-    yearMode: Boolean = false
+    yearMode: Boolean = false,
+    hideAmount: Boolean = false
 ) {
     var selectedDay by remember { mutableStateOf<Int?>(null) }
     var selectedMonth by remember { mutableStateOf<Int?>(null) }
@@ -73,6 +74,7 @@ fun CalendarMonthView(
                 MonthGrid(
                     txs = monthList,
                     yearMonth = YearMonth.of(yearMonth.year, m),
+                    hideAmount = hideAmount,
                     onDayClick = { day ->
                         selectedDay = day
                         selectedMonth = m
@@ -84,6 +86,7 @@ fun CalendarMonthView(
         MonthGrid(
             txs = txs,
             yearMonth = yearMonth,
+            hideAmount = hideAmount,
             onDayClick = { day -> selectedDay = day }
         )
     }
@@ -96,6 +99,7 @@ fun CalendarMonthView(
         }
         DayDetailDialog(
             dayTxs = list,
+            hideAmount = hideAmount,
             onDismiss = {
                 selectedDay = null
                 selectedMonth = null
@@ -108,6 +112,7 @@ fun CalendarMonthView(
 private fun MonthGrid(
     txs: List<Transaction>,
     yearMonth: YearMonth,
+    hideAmount: Boolean,
     onDayClick: (Int) -> Unit
 ) {
     val daysInMonth = yearMonth.lengthOfMonth()
@@ -161,6 +166,7 @@ private fun MonthGrid(
                                 heat = if (maxExpense > 0) {
                                     ((dayExpense[dayNum] ?: 0.0) / maxExpense).toFloat()
                                 } else 0f,
+                                hide = hideAmount,
                                 onClick = { if (dayNum in hasData) onDayClick(dayNum) }
                             )
                         }
@@ -174,6 +180,7 @@ private fun MonthGrid(
 @Composable
 private fun DayDetailDialog(
     dayTxs: List<Transaction>,
+    hideAmount: Boolean = false,
     onDismiss: () -> Unit
 ) {
     AlertDialog(
@@ -204,8 +211,12 @@ private fun DayDetailDialog(
                             )
                         }
                         Text(
-                            text = (if (tx.type == Transaction.TYPE_EXPENSE) "-" else "+") +
-                                formatAmount(tx.amount),
+                            text = if (hideAmount) {
+                                if (tx.type == Transaction.TYPE_EXPENSE) "-****" else "+****"
+                            } else {
+                                (if (tx.type == Transaction.TYPE_EXPENSE) "-" else "+") +
+                                    formatAmount(tx.amount)
+                            },
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (tx.type == Transaction.TYPE_EXPENSE) ExpenseRed else IncomeBlue
@@ -213,7 +224,11 @@ private fun DayDetailDialog(
                     }
                 }
                 Text(
-                    text = "支出 ¥${formatAmount(dayTxs.expenseSum())} · 收入 ¥${formatAmount(dayTxs.incomeSum())}",
+                    text = if (hideAmount) {
+                        "支出 ¥**** · 收入 ¥****"
+                    } else {
+                        "支出 ¥${formatAmount(dayTxs.expenseSum())} · 收入 ¥${formatAmount(dayTxs.incomeSum())}"
+                    },
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -232,6 +247,7 @@ private fun DayCell(
     income: Double,
     isToday: Boolean,
     heat: Float = 0f,
+    hide: Boolean = false,
     onClick: () -> Unit
 ) {
     Column(
@@ -260,7 +276,7 @@ private fun DayCell(
         )
         if (expense > 0) {
             Text(
-                text = formatAmount(expense),
+                text = if (hide) "****" else formatAmount(expense),
                 fontSize = 8.sp,
                 color = ExpenseRed,
                 maxLines = 1
@@ -268,7 +284,7 @@ private fun DayCell(
         }
         if (income > 0) {
             Text(
-                text = formatAmount(income),
+                text = if (hide) "****" else formatAmount(income),
                 fontSize = 8.sp,
                 color = IncomeBlue,
                 maxLines = 1

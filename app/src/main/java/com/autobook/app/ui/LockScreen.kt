@@ -112,7 +112,8 @@ fun LockScreen(onUnlocked: () -> Unit) {
                 } catch (_: Exception) {
                 }
             }
-        } else {
+        } else if (input.isNotEmpty()) {
+            // 重新开始输入才清除错误提示（输错后 input 置空不会立刻抹掉"密码错误"）
             error = false
         }
     }

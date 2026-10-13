@@ -31,17 +31,23 @@ object NotificationParser {
 
     fun bankNameOf(pkg: String): String? = BANK_PKGS[pkg]
 
-    private val amountRegex = Regex("""[¥￥]\s*(\d+(?:\.\d{1,2})?)|(\d+(?:\.\d{1,2})?)\s*元""")
+    private val amountRegex = Regex("""[¥￥]\s*(\d+(?:\.\d{1,2})?)(?!\d)|(?<![0-9.])(\d+(?:\.\d{1,2})?)\s*元""")
 
     private val merchantPatterns = listOf(
-        Regex("""(?:商家|商户|收款方)[：:]\s*(.{1,20})"""),
-        Regex("""在(.{1,20}?)(?:支付|付款|消费|购买)"""),
+        Regex("""^(.{2,20}?)于.{0,16}?向您"""),
+        Regex("""(?:商家|商户|收款方)[：:]\s*([^，,。;；\s]{1,20})"""),
+        Regex("""在(.{2,20}?)(?:支付|付款|消费|购买)"""),
         Regex("""向(.{1,20}?)(?:完成|支付|消费|购买)"""),
         Regex("""(.{1,20}?)(?:收款|付款)成功""")
     )
 
     private val paymentKeywords = listOf(
-        "支付", "付款", "收款", "转账", "退款", "消费", "入账", "扣款", "支出", "交易", "还款"
+        "支付", "付款", "收款", "转账", "退款", "消费", "入账", "扣款", "支出", "交易", "还款", "缴费", "缴纳"
+    )
+
+    private val incomeToAccountRegex = Regex(
+        """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
+        RegexOption.DOT_MATCHES_ALL
     )
 
     fun parse(packageName: String, title: String?, text: String?): ParsedResult? {
@@ -54,15 +60,18 @@ object NotificationParser {
         val full = "$t $c"
 
         if (packageName == WECHAT_PKG &&
-            !t.contains("支付") && !t.contains("收款") && !t.contains("转账")
+            !t.contains("支付") && !t.contains("收款") && !t.contains("转账") && !t.contains("缴费")
         ) return null
 
         if (bankNameOf(packageName) != null &&
             !full.contains("银行") && !full.contains("支出") && !full.contains("收入") &&
-            !full.contains("消费") && !full.contains("交易") && !full.contains("支付")
+            !full.contains("消费") && !full.contains("交易") && !full.contains("支付") &&
+            !full.contains("入账") && !full.contains("收款") && !full.contains("转入") &&
+            !full.contains("退款") && !full.contains("还款") && !full.contains("到账") &&
+            !full.contains("转账") && !full.contains("缴费") && !full.contains("缴纳")
         ) return null
         if (packageName == ALIPAY_PKG && !t.contains("支付宝") && !t.contains("支付") &&
-            !t.contains("花呗") && !t.contains("还款")
+            !t.contains("花呗") && !t.contains("还款") && !t.contains("缴费")
         ) {
             val hasTradeInText = yuanAmountRegex.find(c) != null &&
                 paymentKeywords.any { c.contains(it) }
@@ -91,8 +100,8 @@ object NotificationParser {
         if (amount < 0.01 || amount > Transaction.MAX_AMOUNT) return null
 
         val isStrongExpense = listOf("支出", "扣款").any { full.contains(it) }
-        val isIncome = listOf("收款", "入账", "转入", "收到", "退款", "返现")
-            .any { full.contains(it) } &&
+        val isIncome = (listOf("收款", "入账", "转入", "收到", "退款", "返现", "收入", "到账", "汇入")
+            .any { full.contains(it) } || incomeToAccountRegex.containsMatchIn(full)) &&
             !full.contains("收款方") && !full.contains("收款人") && !isStrongExpense
         val type = if (isIncome) Transaction.TYPE_INCOME else Transaction.TYPE_EXPENSE
 
@@ -107,15 +116,17 @@ object NotificationParser {
     }
 
     private val contextualAmountRegex = Regex(
-        """(?:支出|消费|收入|付款|支付|退款|交易|转账|实付|已扣|还款)[^0-9¥￥]{0,6}[-－]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"""
+        """(?:支出|消费|收入|付款|支付|退款|交易|转账|实付|已扣|还款|缴费|缴纳)[^0-9¥￥]{0,6}[-－]?\s*(?<![0-9.])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"""
     )
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
+    private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
 
-    private val yuanAmountRegex = Regex("""(\d+(?:\.\d{1,2})?)\s*元""")
+    private val yuanAmountRegex = Regex("""(?<![0-9.])(\d+(?:\.\d{1,2})?)\s*元""")
 
     private fun extractAmount(text: String): Double? {
-        val cleaned = text.replace(",", "").replace("支付宝", "").replace(rebateAmountRegex, "")
+        val cleaned = text.replace(",", "").replace("支付宝", "")
+            .replace(rebateAmountRegex, "").replace(originalPriceRegex, "")
         yuanAmountRegex.find(cleaned)?.let { m ->
             m.groupValues[1].toDoubleOrNull()?.let { return it }
         }
@@ -124,14 +135,19 @@ object NotificationParser {
             return contextual.groupValues[1].toDoubleOrNull()
         }
         val match = amountRegex.find(cleaned) ?: return null
-        return match.groups[1]?.value?.toDoubleOrNull()
+        return (match.groups[1]?.value ?: match.groups[2]?.value)?.toDoubleOrNull()
     }
+
+    private fun isAccountPlaceholder(name: String): Boolean =
+        name.contains("尾号") || name.contains("余额") || name.contains("账户") || name == "您"
+
+    private val merchantStopWords = setOf("已", "您", "我", "本", "该", "成功", "一笔", "在线")
 
     private fun extractMerchantFromText(text: String): String {
         for (p in merchantPatterns) {
             val m = p.find(text) ?: continue
             val name = m.groupValues[1].trim()
-            if (name.isNotEmpty()) return name
+            if (name.length >= 2 && !isAccountPlaceholder(name) && name !in merchantStopWords) return name
         }
         return ""
     }

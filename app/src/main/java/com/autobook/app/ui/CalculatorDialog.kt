@@ -42,7 +42,8 @@ fun CalculatorDialog(
             "=" -> {
                 val result = evaluate(expr)
                 if (result != null) {
-                    expr = formatResult(result)
+                    // 保留全精度续算，避免 10÷3=→3.33→×3=→9.99 的链式误差
+                    expr = result.toString()
                 }
             }
             "C" -> expr = ""
@@ -162,6 +163,7 @@ private fun formatResult(value: Double): String {
     return if (value == value.toLong().toDouble()) {
         value.toLong().toString()
     } else {
-        "%.2f".format(value)
+        // 固定中国小数格式：逗号小数分隔符的语言环境下计算器不再失效/串号
+        String.format(java.util.Locale.CHINA, "%.2f", value)
     }
 }

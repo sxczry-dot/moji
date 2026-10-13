@@ -8,6 +8,8 @@ import com.autobook.app.parser.ParsedResult
 
 object TransactionSaver {
 
+    val redPacketDeductionRegex = Regex("""使用\d+(?:\.\d{1,2})?元红包|红包抵扣|抵扣红包|红包立减""")
+
     sealed class Outcome {
         data object Inserted : Outcome()
         data object Duplicate : Outcome()
@@ -32,6 +34,8 @@ object TransactionSaver {
             val classifyText = listOf(parsed.merchant, parsed.rawText, source)
                 .filter { it.isNotBlank() }
                 .joinToString(" ")
+                // 剔除抵扣类红包文案，避免"使用5元红包，实付38元"被"红包"关键词误分人情社交
+                .replace(com.autobook.app.service.TransactionSaver.redPacketDeductionRegex, "")
             val category = learned ?: if (parsed.type == Transaction.TYPE_EXPENSE) {
                 CategoryClassifier.classifyExpense(classifyText)
             } else {

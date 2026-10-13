@@ -149,7 +149,10 @@ class NotificationListenerService : android.service.notification.NotificationLis
         if (parsed == null) {
             val reason = com.autobook.app.util.NotifDiagnose.reasonOf(full)
             val result = if (reason != null) "未匹配（$reason）" else "未匹配"
-            AppSettings.addNotifLog(this, "$time | $channel | $result | $safeText")
+            // SharedPreferences 读写挪到 IO 线程，避免主线程卡顿
+            CoroutineScope(Dispatchers.IO).launch {
+                AppSettings.addNotifLog(this@NotificationListenerService, "$time | $channel | $result | $safeText")
+            }
             return
         }
 

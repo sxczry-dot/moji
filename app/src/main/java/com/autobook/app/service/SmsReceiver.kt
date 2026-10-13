@@ -27,10 +27,13 @@ class SmsReceiver : BroadcastReceiver() {
         if (parsed == null) {
             val reason = com.autobook.app.util.NotifDiagnose.reasonOf(body)
             val result = if (reason != null) "未匹配（$reason）" else "未匹配"
-            com.autobook.app.util.AppSettings.addNotifLog(
-                context,
-                "$time | 短信 | $result | $safeBody"
-            )
+            // SharedPreferences 读写挪到 IO 线程，避免主线程卡顿
+            CoroutineScope(Dispatchers.IO).launch {
+                com.autobook.app.util.AppSettings.addNotifLog(
+                    context.applicationContext,
+                    "$time | 短信 | $result | $safeBody"
+                )
+            }
             return
         }
 

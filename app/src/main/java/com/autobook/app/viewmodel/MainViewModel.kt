@@ -95,11 +95,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     )
 
     val lastSixMonths: StateFlow<List<MonthStat>> =
-        combine(allTransactions, _currentMonth) { txs, ym ->
+        combine(allTransactions, _currentMonth, _currentBook) { txs, ym, book ->
+            // 按当前账本过滤：近6月图/环比不能混入其他账本
+            val bookTxs = txs.filter { it.book == book }
             (5 downTo 0).map { offset ->
                 val m = ym.minusMonths(offset.toLong())
                 val (start, end) = TimeUtils.monthRange(m.year, m.monthValue - 1)
-                val inMonth = txs.filter { it.timestamp in start until end }
+                val inMonth = bookTxs.filter { it.timestamp in start until end }
                 MonthStat(
                     yearMonth = m,
                     expense = inMonth.expenseSum(),
@@ -123,7 +125,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addManual(amount: Double, type: Int, category: String, merchant: String, tags: String, timestamp: Long = System.currentTimeMillis(), book: String? = null) {
+    fun addManual(
+        amount: Double,
+        type: Int,
+        category: String,
+        merchant: String,
+        tags: String,
+        timestamp: Long = System.currentTimeMillis(),
+        book: String? = null,
+        source: String = Transaction.SOURCE_MANUAL,
+        refNo: String = ""
+    ) {
         if (merchant.isNotBlank()) {
             AppSettings.learnCategory(getApplication(), merchant, com.autobook.app.data.Categories.primaryOf(category))
         }
@@ -134,10 +146,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     type = type,
                     category = category,
                     merchant = merchant.ifEmpty { Transaction.MERCHANT_FALLBACK },
-                    source = Transaction.SOURCE_MANUAL,
+                    source = source,
                     timestamp = timestamp,
                     tags = tags.trim(),
-                    book = book ?: _currentBook.value
+                    book = book ?: _currentBook.value,
+                    refNo = refNo
                 )
             )
             MonthSync.refreshCurrentMonth(getApplication(), _currentBook.value)

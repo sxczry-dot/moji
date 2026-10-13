@@ -9,8 +9,11 @@ import java.util.Calendar
 object RecurringManager {
 
     suspend fun checkAndRun(context: Context) {
+        // 与"暂停自动记账"开关语义一致：暂停期间周期记账同样不执行
+        if (AppSettings.isAutoPaused(context)) return
         val rules = AppSettings.getRecurringRules(context)
         if (rules.isEmpty()) return
+        val books = AppSettings.getBooks(context)
         val cal = Calendar.getInstance()
         val now = cal.timeInMillis
         val year = cal.get(Calendar.YEAR)
@@ -21,12 +24,15 @@ object RecurringManager {
         val repo = AutoBookApp.instance.repository
         for (rule in rules) {
             if (rule.paused) continue
+            // 账本已被删除的规则不再向幽灵账本写记录（重命名/删除账本时已同步迁移规则，这里是兜底）
+            if (rule.book !in books) continue
             // 规则 day：每月=几号；每周=1周一..7周日 → Calendar.DAY_OF_WEEK（2周一..1周日）；
             // 每年=月*100+日（如903=9月3日）；月末=忽略 day
             val calDay = (rule.day % 7) + 1
             when (rule.period) {
                 0 -> if (day < rule.day) continue
-                1 -> if (nowDayOfWeek < calDay) continue
+                // 只有"今天就是目标星期几"才执行，避免周日(calDay=1)规则因最小值判定失效而每天触发
+                1 -> if ((calDay - nowDayOfWeek + 7) % 7 != 0) continue
                 2 -> if (day != cal.getActualMaximum(Calendar.DAY_OF_MONTH)) continue
                 3 -> {
                     val ruleMonth = rule.day / 100
@@ -43,7 +49,7 @@ object RecurringManager {
                     .toEpochDay().toInt()
                 else -> 0
             }
-            val key = "${rule.name}_${rule.day}_${rule.period}_${rule.book}"
+            val key = AppSettings.recurringKey(rule)
             if (AppSettings.isRecurringDone(context, key, year, periodKey)) continue
             repo.add(
                 Transaction(
@@ -81,8 +87,20 @@ object RecurringManager {
             0 -> ts.set(Calendar.DAY_OF_MONTH, rule.day)
             2 -> ts.set(Calendar.DAY_OF_MONTH, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
             3 -> {
-                ts.set(Calendar.MONTH, rule.day / 100 - 1)
-                ts.set(Calendar.DAY_OF_MONTH, rule.day % 100)
+                val m = rule.day / 100 - 1
+                val d = rule.day % 100
+                // 每年规则（如 2月29）：非闰年等不存在的日期钳制到该月最后一天，避免 lenient 滚动到次月
+                ts.isLenient = false
+                ts.set(Calendar.MONTH, m)
+                ts.set(Calendar.DAY_OF_MONTH, d)
+                try {
+                    ts.timeInMillis
+                } catch (_: Exception) {
+                    ts.isLenient = true
+                    ts.set(Calendar.MONTH, m)
+                    ts.set(Calendar.DAY_OF_MONTH, 1)
+                    ts.set(Calendar.DAY_OF_MONTH, ts.getActualMaximum(Calendar.DAY_OF_MONTH))
+                }
             }
             else -> ts.add(Calendar.DAY_OF_YEAR, -(cal.get(Calendar.DAY_OF_WEEK) - calDay))
         }

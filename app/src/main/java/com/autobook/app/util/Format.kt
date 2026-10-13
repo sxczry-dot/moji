@@ -27,12 +27,12 @@ fun smallSymbolAmount(
 fun formatAmountGrouped(amount: Double): String =
     String.format(Locale.CHINA, "%,.2f", amount)
 
-private val timeFormat = SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA)
-private val dayFormat = SimpleDateFormat("MM月dd日", Locale.CHINA)
+// SimpleDateFormat 非线程安全：改为每次调用新建实例（小组件/后台线程与 UI 可并发使用）
+fun formatTime(timestamp: Long): String =
+    SimpleDateFormat("MM月dd日 HH:mm", Locale.CHINA).format(Date(timestamp))
 
-fun formatTime(timestamp: Long): String = timeFormat.format(Date(timestamp))
-
-fun formatDay(timestamp: Long): String = dayFormat.format(Date(timestamp))
+fun formatDay(timestamp: Long): String =
+    SimpleDateFormat("MM月dd日", Locale.CHINA).format(Date(timestamp))
 
 fun formatDayWithWeek(timestamp: Long): String {
     val cal = java.util.Calendar.getInstance().apply { timeInMillis = timestamp }
@@ -45,7 +45,7 @@ fun formatDayWithWeek(timestamp: Long): String {
         java.util.Calendar.SATURDAY -> "周六"
         else -> "周日"
     }
-    return dayFormat.format(Date(timestamp)) + " " + weekday
+    return formatDay(timestamp) + " " + weekday
 }
 
 fun filterAmountInput(raw: String): String {

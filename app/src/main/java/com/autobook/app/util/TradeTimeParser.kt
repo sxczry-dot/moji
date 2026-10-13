@@ -6,7 +6,7 @@ object TradeTimeParser {
 
     // 支持格式：08月24日09:23、8月24日 09:23、09:23、08-24 09:23、08/24 09:23
     private val fullRegex = Regex("""(\d{1,2})[月\-/.](\d{1,2})[日]?[\s\-]*(\d{1,2})[:：](\d{1,2})""")
-    private val shortRegex = Regex("""(?:^|[\s，,（(])(\d{1,2})[:：](\d{1,2})(?=[\s，,）)：]|$)""")
+    private val shortRegex = Regex("""(?:^|[\s，,（(])(\d{1,2})[:：](\d{1,2})(?:分)?(?=[\s，,）)：.]|$)""")
 
     fun parse(text: String, reference: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = reference }

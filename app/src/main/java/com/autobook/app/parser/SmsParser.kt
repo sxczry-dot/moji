@@ -11,7 +11,7 @@ object SmsParser {
     )
 
     private val expenseKeywords = listOf(
-        "消费", "支出", "支付", "扣款", "取款", "转账支出", "划出", "代扣", "交易", "转账"
+        "消费", "支出", "支付", "扣款", "取款", "转账支出", "划出", "代扣", "交易", "转账", "还款"
     )
 
     private val incomeKeywords = listOf(
@@ -19,10 +19,11 @@ object SmsParser {
     )
 
     private val incomeToAccountRegex = Regex(
-        """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)"""
+        """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
+        RegexOption.DOT_MATCHES_ALL
     )
 
-    private val amountRegex = Regex("""(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*元""")
+    private val amountRegex = Regex("""(?<![0-9.])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*元""")
 
     private val contextualAmountRegex = Regex(
         """(?:支出|消费|收入|付款|支付|退款|交易|扣款|入账|到账|实付|已扣)[^0-9¥￥]{0,6}[-－]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?:元|人民币)?"""
@@ -47,8 +48,11 @@ object SmsParser {
         if (listOf("共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单", "账单出炉").any { body.contains(it) }) return null
         val isStrongExpense = listOf("支出", "消费", "扣款", "取款", "划出").any { body.contains(it) }
         val isExpense = expenseKeywords.any { body.contains(it) }
-        val isIncome = (incomeKeywords.any { body.contains(it) } ||
-            incomeToAccountRegex.containsMatchIn(body)) && !isStrongExpense
+        // "消费退款/退货退款" 等含"退款"的短信是收入；只有"退款支出"类才按支出处理
+        val hasRefundIncome = body.contains("退款") && !body.contains("退款支出")
+        val isIncome = ((incomeKeywords.any { body.contains(it) } ||
+            incomeToAccountRegex.containsMatchIn(body)) && !isStrongExpense) ||
+            (hasRefundIncome && !body.contains("支出") && !body.contains("扣款"))
         if (!isExpense && !isIncome) return null
 
         val isBank = isBankSender(sender)
@@ -73,9 +77,10 @@ object SmsParser {
     }
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
+    private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
 
     private fun extractAmount(body: String): Double? {
-        val cleanedBody = body.replace(rebateAmountRegex, "")
+        val cleanedBody = body.replace(rebateAmountRegex, "").replace(originalPriceRegex, "")
         val prefixed = prefixedAmountRegex.find(cleanedBody)
         if (prefixed != null) {
             return prefixed.groupValues[1].replace(",", "").toDoubleOrNull()

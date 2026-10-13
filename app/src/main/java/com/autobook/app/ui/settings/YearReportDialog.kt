@@ -61,7 +61,8 @@ fun YearReportDialog(onDismiss: () -> Unit) {
     val topMerchant = yearTxs
         .filter { it.type == Transaction.TYPE_EXPENSE && it.merchant.isNotBlank() }
         .groupBy { it.merchant }
-        .maxByOrNull { (_, list) -> list.sumOf { it.amount } }
+        // "最常"按笔数统计，而非单笔大额即当选
+        .maxByOrNull { (_, list) -> list.size }
 
     val topDay = yearTxs
         .filter { it.type == Transaction.TYPE_EXPENSE }
@@ -97,7 +98,9 @@ fun YearReportDialog(onDismiss: () -> Unit) {
                 )
                 ReportLine(
                     "最常消费商户",
-                    topMerchant?.let { "${it.key}（¥${formatAmount(it.value.sumOf { t -> t.amount })}）" } ?: "无",
+                    topMerchant?.let {
+                        "${it.key}（${it.value.size}笔 · ¥${formatAmount(it.value.sumOf { t -> t.amount })}）"
+                    } ?: "无",
                     androidx.compose.material.icons.Icons.Outlined.Storefront
                 )
                 ReportLine(

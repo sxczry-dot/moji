@@ -129,9 +129,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var expandedTools by rememberSaveable { mutableStateOf(false) }
     var expandedStats by rememberSaveable { mutableStateOf(false) }
     var expandedHelp by rememberSaveable { mutableStateOf(false) }
-    var exportPendingCsv by remember { mutableStateOf("") }
-    var exportPendingCount by remember { mutableIntStateOf(0) }
-    var exportedUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var exportPendingCsv by rememberSaveable { mutableStateOf("") }
+    var exportPendingCount by rememberSaveable { mutableIntStateOf(0) }
+    var exportedUri by rememberSaveable { mutableStateOf<String?>(null) }
     var persistentNotif by remember {
         mutableStateOf(com.autobook.app.util.AppSettings.isPersistentNotification(context))
     }
@@ -231,7 +231,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(exportPendingCsv.toByteArray(Charsets.UTF_8))
                     }
-                    exportedUri = uri
+                    exportedUri = uri.toString()
                     resultMessage = "已导出 ${exportPendingCount} 笔记录"
                 } catch (e: Exception) {
                     resultMessage = "导出失败：${e.message}"
@@ -251,13 +251,17 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         return@launch
                     }
                     val content = decodeBytes(bytes)
-                    val txs = CsvCodec.decode(content)
+                    // 导入目标账本：默认当前账本（多账本用户导入的记录不再"消失"到默认账本）
+                    val currentBook = com.autobook.app.util.AppSettings.getCurrentBook(context)
+                    val txs = CsvCodec.decode(content, currentBook)
                     val existing = AutoBookApp.instance.repository.getAllOnce()
-                    val existingKeys = existing.map {
-                        Triple(it.timestamp, it.amount, it.merchant)
-                    }.toHashSet()
-                    val newTxs = txs.filter {
-                        Triple(it.timestamp, it.amount, it.merchant) !in existingKeys
+                    // 去重按"时间戳±1s + 金额±0.005 + 商户"判断，兼容旧版无毫秒导出
+                    val newTxs = txs.filter { tx ->
+                        existing.none { e ->
+                            kotlin.math.abs(e.timestamp - tx.timestamp) < 1000L &&
+                                kotlin.math.abs(e.amount - tx.amount) < 0.005 &&
+                                e.merchant == tx.merchant
+                        }
                     }
                     AutoBookApp.instance.repository.addAll(newTxs)
                     val skipped = txs.size - newTxs.size
@@ -1342,7 +1346,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.89\n" +
+                                        "应用版本：4.90\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1359,7 +1363,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.89",
+            text = "默记 v4.90",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1417,7 +1421,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         onClick = {
                             val shareIntent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                 type = "text/csv"
-                                putExtra(android.content.Intent.EXTRA_STREAM, exportedUri)
+                                putExtra(android.content.Intent.EXTRA_STREAM, android.net.Uri.parse(exportedUri))
                                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                             }
                             context.startActivity(
@@ -1507,6 +1511,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 AutoBookApp.instance.repository.replaceAll(emptyList())
                                 com.autobook.app.util.AppSettings.clearAllSettings(context)
                                 resultMessage = "已清空全部数据"
+                                // 清空后重建界面，刷新全部开关/账本状态
+                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                    (context as? android.app.Activity)?.recreate()
+                                }
                             } catch (e: Exception) {
                                 resultMessage = "清空失败：${e.message}"
                             }
@@ -1727,6 +1735,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                     json.getString("settings")
                                 )
                                 resultMessage = "恢复完成：${txs.size} 笔记录"
+                                // 覆盖式恢复后重建界面，刷新全部开关/账本状态
+                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                    (context as? android.app.Activity)?.recreate()
+                                }
                             } catch (e: Exception) {
                                 resultMessage = "恢复失败：${e.message}"
                             }

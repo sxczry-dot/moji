@@ -92,6 +92,11 @@ import com.autobook.app.util.formatAmount
 import com.autobook.app.util.formatAmountGrouped
 import com.autobook.app.viewmodel.MainViewModel
 
+private val yearMonthNullableSaver = androidx.compose.runtime.saveable.Saver<java.time.YearMonth?, String>(
+    save = { it?.toString() ?: "" },
+    restore = { s -> if (s.isNullOrEmpty()) null else java.time.YearMonth.parse(s) }
+)
+
 @OptIn(
     ExperimentalMaterial3Api::class,
     ExperimentalLayoutApi::class,
@@ -110,12 +115,12 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     val clipboard = androidx.compose.ui.platform.LocalClipboardManager.current
     var showAddDialog by remember { mutableStateOf(false) }
     var pendingEditId by remember { mutableStateOf(-1L) }
-    var searchText by remember { mutableStateOf("") }
+    var searchText by rememberSaveable { mutableStateOf("") }
     var showFilter by remember { mutableStateOf(false) }
     var showBookPicker by remember { mutableStateOf(false) }
     var deleteTarget by remember { mutableStateOf<Transaction?>(null) }
     var deletedTx by remember { mutableStateOf<Transaction?>(null) }
-    var starOnly by remember { mutableStateOf(false) }
+    var starOnly by rememberSaveable { mutableStateOf(false) }
     var searchFocused by remember { mutableStateOf(false) }
     val listContext = androidx.compose.ui.platform.LocalContext.current
     val listFocusManager = androidx.compose.ui.platform.LocalFocusManager.current
@@ -128,7 +133,11 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         com.autobook.app.MainActivity.quickAddRequests.collect { tick ->
-            if (tick > 0) showAddDialog = true
+            if (tick > 0) {
+                showAddDialog = true
+                // 消费后复位，避免切页/解锁后对话框反复弹出
+                com.autobook.app.MainActivity.quickAddRequests.value = 0
+            }
         }
     }
     androidx.compose.runtime.LaunchedEffect(Unit) {
@@ -148,12 +157,16 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
             }
         }
     }
-    var filterCategory by remember { mutableStateOf<String?>(null) }
-    var filterMin by remember { mutableStateOf("") }
-    var filterMax by remember { mutableStateOf("") }
-    var filterFromMonth by remember { mutableStateOf<java.time.YearMonth?>(null) }
-    var filterToMonth by remember { mutableStateOf<java.time.YearMonth?>(null) }
-    var sortMode by remember { mutableIntStateOf(0) }
+    var filterCategory by rememberSaveable { mutableStateOf<String?>(null) }
+    var filterMin by rememberSaveable { mutableStateOf("") }
+    var filterMax by rememberSaveable { mutableStateOf("") }
+    var filterFromMonth by rememberSaveable(stateSaver = yearMonthNullableSaver) {
+        mutableStateOf<java.time.YearMonth?>(null)
+    }
+    var filterToMonth by rememberSaveable(stateSaver = yearMonthNullableSaver) {
+        mutableStateOf<java.time.YearMonth?>(null)
+    }
+    var sortMode by rememberSaveable { mutableIntStateOf(0) }
     var switchToBottom by remember { mutableStateOf(false) }
     var saveSuccessTick by remember { mutableIntStateOf(0) }
 
@@ -177,12 +190,14 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     val searching = searchText.isNotBlank() || hasFilter
     val searchResults = if (searching) {
         remember(
-            allTxs, searchText, filterCategory, filterMin, filterMax,
+            allTxs, currentBook, searchText, filterCategory, filterMin, filterMax,
             filterFromMonth, filterToMonth, sortMode, starOnly, starredIds
         ) {
             val min = filterMin.toDoubleOrNull()
             val max = filterMax.toDoubleOrNull()
             allTxs.filter { tx ->
+                // 搜索/筛选只作用于当前账本，避免其他账本记录混入并可被误删
+                val bookMatch = tx.book == currentBook
                 val textMatch = searchText.isBlank() ||
                     tx.merchant.contains(searchText, true) ||
                     tx.category.contains(searchText, true)
@@ -197,7 +212,7 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                     filterToMonth!!.year, filterToMonth!!.monthValue - 1
                 ).second
                 val starMatch = !starOnly || tx.id in starredIds
-                textMatch && catMatch && minMatch && maxMatch && fromMatch && toMatch && starMatch
+                bookMatch && textMatch && catMatch && minMatch && maxMatch && fromMatch && toMatch && starMatch
             }.let { list ->
                 when (sortMode) {
                     1 -> list.sortedBy { it.timestamp }
@@ -289,9 +304,8 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                     scrollBy(100000f)
                 }
             }
-        } else {
-            listState.scrollToItem(0)
         }
+        // 编辑/删除/后台自动入账引起的数据变化不再强制回顶，保留用户浏览位置
     }
     androidx.compose.runtime.LaunchedEffect(scrollTopTick) {
         if (scrollTopTick > 0) {
@@ -902,9 +916,13 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                 tx = deletedTx,
                 onUndo = {
                     deletedTx?.let { tx ->
+                        // 携带账本/来源/单号重建，撤销后记录归属与来源不被改写
                         viewModel.addManual(
                             tx.amount, tx.type, tx.category,
-                            tx.merchant, tx.tags, tx.timestamp
+                            tx.merchant, tx.tags, tx.timestamp,
+                            book = tx.book,
+                            source = tx.source.ifEmpty { com.autobook.app.data.Transaction.SOURCE_MANUAL },
+                            refNo = tx.refNo
                         )
                     }
                     deletedTx = null

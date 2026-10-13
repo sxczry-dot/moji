@@ -30,7 +30,8 @@ object Permissions {
             context.contentResolver,
             "enabled_notification_listeners"
         ) ?: return false
-        return flat.split(":").any { it.startsWith(context.packageName) }
+        // 精确匹配包名（flat 形如 "包名/组件名:..."），避免同前缀包名误判
+        return flat.split(":").any { it.substringBefore('/') == context.packageName }
     }
 
     fun isSmsGranted(context: Context): Boolean {

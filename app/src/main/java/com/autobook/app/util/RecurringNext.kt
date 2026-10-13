@@ -29,17 +29,46 @@ object RecurringNext {
                 }
                 "下次：${target.get(Calendar.YEAR)}年${target.get(Calendar.MONTH) + 1}月${target.get(Calendar.DAY_OF_MONTH)}日"
             }
-            2 -> "下次：${nowYear}年${nowMonth + 1}月${now.getActualMaximum(Calendar.DAY_OF_MONTH)}日"
+            2 -> {
+                // 今天已过月末 → 显示下月最后一天；否则本月最后一天
+                val thisMax = now.getActualMaximum(Calendar.DAY_OF_MONTH)
+                val isLastDay = nowDay >= thisMax
+                val target = (now.clone() as Calendar).apply {
+                    if (isLastDay) {
+                        add(Calendar.MONTH, 1)
+                        set(Calendar.DAY_OF_MONTH, 1)
+                    } else {
+                        set(Calendar.DAY_OF_MONTH, thisMax)
+                    }
+                }
+                val d = if (isLastDay) target.getActualMaximum(Calendar.DAY_OF_MONTH) else thisMax
+                "下次：${target.get(Calendar.YEAR)}年${target.get(Calendar.MONTH) + 1}月${d}日"
+            }
             else -> {
                 val m = rule.day / 100
                 val d = rule.day % 100
-                val year = if (nowMonth + 1 > m || (nowMonth + 1 == m && nowDay > d)) {
-                    nowYear + 1
-                } else {
-                    nowYear
+                var year = nowYear
+                if (nowMonth + 1 > m || (nowMonth + 1 == m && nowDay >= d)) {
+                    year = nowYear + 1
                 }
+                // 跳过不存在的日期（如非闰年 2 月 29 日顺延到下一个闰年）
+                while (!dateValid(year, m, d)) year++
                 "下次：${year}年${m}月${d}日"
             }
+        }
+    }
+
+    private fun dateValid(year: Int, month: Int, day: Int): Boolean {
+        val cal = Calendar.getInstance().apply {
+            isLenient = false
+            clear()
+            set(year, month - 1, day)
+        }
+        return try {
+            cal.timeInMillis
+            true
+        } catch (_: Exception) {
+            false
         }
     }
 }

@@ -31,6 +31,8 @@ import kotlinx.coroutines.launch
 @Composable
 fun BookManagerDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val viewModel: com.autobook.app.viewmodel.MainViewModel =
+        androidx.lifecycle.viewmodel.compose.viewModel()
     var books by remember { mutableStateOf(AppSettings.getBooks(context)) }
     var current by remember { mutableStateOf(AppSettings.getCurrentBook(context)) }
     var newBookName by remember { mutableStateOf("") }
@@ -69,7 +71,8 @@ fun BookManagerDialog(onDismiss: () -> Unit) {
                             selected = book == current,
                             onClick = {
                                 current = book
-                                AppSettings.setCurrentBook(context, book)
+                                // 走 ViewModel：同时更新 prefs、StateFlow 与小组件，主界面立即生效
+                                viewModel.setCurrentBook(book)
                             }
                         )
                         Text(
@@ -91,6 +94,8 @@ fun BookManagerDialog(onDismiss: () -> Unit) {
                                         AppSettings.removeBook(context, book)
                                         books = AppSettings.getBooks(context)
                                         current = AppSettings.getCurrentBook(context)
+                                        // 同步 ViewModel 状态，主界面不会停留在已删除账本上
+                                        viewModel.setCurrentBook(AppSettings.getCurrentBook(context))
                                     }
                                 }
                             ) { Text("删除", color = MaterialTheme.colorScheme.error) }
@@ -127,31 +132,53 @@ fun BookManagerDialog(onDismiss: () -> Unit) {
 
     renameTarget?.let { target ->
         var renameInput by remember { mutableStateOf(target) }
+        var renameError by remember { mutableStateOf<String?>(null) }
         androidx.compose.material3.AlertDialog(
             shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
             onDismissRequest = { renameTarget = null },
             title = { Text("重命名账本") },
             text = {
-                OutlinedTextField(
-                    value = renameInput,
-                    onValueChange = { renameInput = it },
-                    label = { Text("新名称") },
-                    singleLine = true
-                )
+                Column {
+                    OutlinedTextField(
+                        value = renameInput,
+                        onValueChange = {
+                            renameInput = it
+                            renameError = null
+                        },
+                        label = { Text("新名称") },
+                        singleLine = true
+                    )
+                    renameError?.let { msg ->
+                        Text(
+                            text = msg,
+                            style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(
                     onClick = {
                         val newName = renameInput.trim()
-                        if (newName.isNotEmpty() && newName != target) {
-                            AppSettings.renameBook(context, target, newName)
-                            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                                com.autobook.app.AutoBookApp.instance.repository.moveBook(target, newName)
+                        // 校验重名/默认账本，避免数据被静默并入同名账本
+                        when {
+                            newName.isEmpty() -> renameError = "名称不能为空"
+                            newName == target -> renameTarget = null
+                            newName == AppSettings.DEFAULT_BOOK -> renameError = "不能改成「默认账本」，数据会直接并入默认账本"
+                            newName in AppSettings.getBooks(context) -> renameError = "已存在同名账本"
+                            else -> {
+                                AppSettings.renameBook(context, target, newName)
+                                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+                                    com.autobook.app.AutoBookApp.instance.repository.moveBook(target, newName)
+                                    // 当前账本被改名时同步 ViewModel
+                                    viewModel.setCurrentBook(AppSettings.getCurrentBook(context))
+                                }
+                                books = AppSettings.getBooks(context)
+                                current = AppSettings.getCurrentBook(context)
+                                renameTarget = null
                             }
-                            books = AppSettings.getBooks(context)
-                            current = AppSettings.getCurrentBook(context)
                         }
-                        renameTarget = null
                     }
                 ) { Text("确定") }
             },

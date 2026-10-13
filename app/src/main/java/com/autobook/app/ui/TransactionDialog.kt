@@ -83,6 +83,16 @@ fun TransactionDialog(
             }
         )
     }
+    // 收入↔支出来回切换时恢复之前的支出分类，避免被重置成默认"餐饮美食"
+    var lastExpenseCategory by remember {
+        mutableStateOf(
+            when {
+                tx == null -> Categories.FOOD
+                tx.type == Transaction.TYPE_EXPENSE -> savedPrimary ?: Categories.FOOD
+                else -> Categories.FOOD
+            }
+        )
+    }
     var merchant by remember { mutableStateOf(tx?.merchant ?: "") }
     var tags by remember { mutableStateOf(tx?.tags ?: "") }
     var showCalculator by remember { mutableStateOf(false) }
@@ -137,7 +147,7 @@ fun TransactionDialog(
                         selected = type == Transaction.TYPE_EXPENSE,
                         onClick = {
                             type = Transaction.TYPE_EXPENSE
-                            if (category == Categories.INCOME) category = Categories.FOOD
+                            if (category == Categories.INCOME) category = lastExpenseCategory
                         },
                         shape = SegmentedButtonDefaults.itemShape(0, 2)
                     ) { Text("支出") }
@@ -145,6 +155,7 @@ fun TransactionDialog(
                         selected = type == Transaction.TYPE_INCOME,
                         onClick = {
                             type = Transaction.TYPE_INCOME
+                            if (category != Categories.INCOME) lastExpenseCategory = category
                             category = Categories.INCOME
                         },
                         shape = SegmentedButtonDefaults.itemShape(1, 2)
@@ -186,6 +197,7 @@ fun TransactionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)
+                        .focusRequester(amountFocus)
                 )
 
                 OutlinedTextField(
@@ -202,7 +214,6 @@ fun TransactionDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 12.dp)
-                        .focusRequester(amountFocus)
                 )
                 if (amount != null && amount >= 1000) {
                     Text(
@@ -373,6 +384,7 @@ fun TransactionDialog(
                                         indication = LocalIndication.current
                                     ) {
                                         category = group.name
+                                        lastExpenseCategory = group.name
                                     }
                                     .padding(vertical = 10.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -400,13 +412,22 @@ fun TransactionDialog(
         },
         confirmButton = {
             Row {
+                // 编辑旧记录且用户未改动分类时，保留原始完整分类（含历史子分类），避免静默抹掉
+                val effectiveCategory =
+                    if (tx != null && type == tx.type &&
+                        category == com.autobook.app.data.Categories.primaryOf(tx.category)
+                    ) {
+                        tx.category
+                    } else {
+                        category
+                    }
                 if (onConfirmAgain != null && tx == null) {
                     TextButton(
                         onClick = {
                             if (amount == null || amount <= 0 || amount > Transaction.MAX_AMOUNT) {
                                 amountError = true
                             } else {
-                                onConfirmAgain(amount, type, category, merchant, tags, editTimestamp, book)
+                                onConfirmAgain(amount, type, effectiveCategory, merchant, tags, editTimestamp, book)
                                 amountText = ""
                                 amountError = false
                                 dialogScope.launch { amountFocus.requestFocus() }
@@ -419,7 +440,7 @@ fun TransactionDialog(
                         if (amount == null || amount <= 0 || amount > Transaction.MAX_AMOUNT) {
                             amountError = true
                         } else {
-                            onConfirm(amount, type, category, merchant, tags, editTimestamp, book)
+                            onConfirm(amount, type, effectiveCategory, merchant, tags, editTimestamp, book)
                         }
                     }
                 ) { Text("保存") }
@@ -484,6 +505,7 @@ fun TransactionDialog(
                             fontWeight = FontWeight.SemiBold
                         )
                         TextButton(
+                            enabled = !(pickYear == 2019 && pickMonth == 1),
                             onClick = {
                                 if (pickMonth > 1) pickMonth-- else {
                                     pickMonth = 12
@@ -492,6 +514,7 @@ fun TransactionDialog(
                             }
                         ) { Text("◀", fontSize = 11.sp) }
                         TextButton(
+                            enabled = !(pickYear == 2100 && pickMonth == 12),
                             onClick = {
                                 if (pickMonth < 12) pickMonth++ else {
                                     pickMonth = 1
@@ -596,16 +619,27 @@ fun TransactionDialog(
             confirmButton = {
                 TextButton(
                     onClick = {
+                        // 跨月后 pickDay 可能超出当月天数（如 1月31 → 2月），先钳制再构造，
+                        // 且 getTimeInMillis 的异常必须捕获——Calendar 宽松校验在读取时抛 IllegalArgumentException
+                        val monthCal = java.util.Calendar.getInstance().apply {
+                            clear()
+                            set(pickYear, pickMonth - 1, 1)
+                        }
+                        val safeDay = minOf(
+                            pickDay,
+                            monthCal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+                        )
                         val newCal = java.util.Calendar.getInstance().apply {
                             isLenient = false
                             clear()
-                            try {
-                                set(pickYear, pickMonth - 1, pickDay, pickHour, pickMinute, 0)
-                            } catch (_: Exception) {
-                                timeInMillis = editTimestamp
-                            }
+                            set(pickYear, pickMonth - 1, safeDay, pickHour, pickMinute, 0)
                         }
-                        editTimestamp = newCal.timeInMillis
+                        val newTime = try {
+                            newCal.timeInMillis
+                        } catch (_: Exception) {
+                            null
+                        }
+                        if (newTime != null) editTimestamp = newTime
                         showTimePicker = false
                     }
                 ) { Text("确定") }

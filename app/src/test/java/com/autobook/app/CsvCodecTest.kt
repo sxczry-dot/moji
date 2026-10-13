@@ -115,13 +115,71 @@ class CsvCodecTest {
             "\"2026年08月01日\",\"支出\",\"购物\",\"20\",\"ok\"\n" +
             "\"残缺行\"\n"
         val txs = CsvCodec.decode(csv)
-        assertEquals(1, txs.size)
-        assertEquals(20.0, txs[0].amount, 0.001)
+        // 负数金额按银行流水语义取绝对值记为支出；abc/超大额/残缺行跳过
+        assertEquals(2, txs.size)
+        assertEquals(5.0, txs[0].amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, txs[0].type)
+        assertEquals(20.0, txs[1].amount, 0.001)
     }
 
     @Test
     fun `空文件返回空列表`() {
         assertTrue(CsvCodec.decode("").isEmpty())
         assertTrue(CsvCodec.decode("\n\n\n").isEmpty())
+    }
+
+    @Test
+    fun `导出时间含毫秒且往返一致`() {
+        val original = listOf(
+            Transaction(
+                amount = 25.5, type = Transaction.TYPE_EXPENSE, category = "餐饮美食",
+                merchant = "美团", source = "微信", timestamp = 1755916200123L
+            )
+        )
+        val encoded = CsvCodec.encode(original)
+        val decoded = CsvCodec.decode(encoded)
+        assertEquals(1, decoded.size)
+        assertEquals(1755916200123L, decoded[0].timestamp)
+    }
+
+    @Test
+    fun `字段内换行导出导入往返不损坏`() {
+        val original = listOf(
+            Transaction(
+                amount = 25.5, type = Transaction.TYPE_EXPENSE, category = "餐饮美食",
+                merchant = "美团\n外卖", source = "微信", timestamp = 1755916200123L
+            )
+        )
+        val decoded = CsvCodec.decode(CsvCodec.encode(original))
+        assertEquals(1, decoded.size)
+        assertEquals("美团\n外卖", decoded[0].merchant)
+    }
+
+    @Test
+    fun `英文表头识别为表头`() {
+        val csv = "Amount,Type,Category,Merchant,Source,Time\n" +
+            "25.5,Expense,Food,Meituan,WeChat,2026-08-23 12:30:00\n"
+        val txs = CsvCodec.decode(csv)
+        assertEquals(1, txs.size)
+        assertEquals(25.5, txs[0].amount, 0.001)
+        assertEquals("Meituan", txs[0].merchant)
+    }
+
+    @Test
+    fun `时间无法解析的行跳过不兜底当前时间`() {
+        val csv = "$sharkHeader\n" +
+            "\"2026年08月01日\",\"支出\",\"购物\",\"10\",\"ok\"\n" +
+            "\"not-a-date\",\"支出\",\"购物\",\"20\",\"bad\"\n"
+        val txs = CsvCodec.decode(csv)
+        assertEquals(1, txs.size)
+        assertEquals(10.0, txs[0].amount, 0.001)
+    }
+
+    @Test
+    fun `导入账本参数生效`() {
+        val csv = "$sharkHeader\n\"2026年08月01日\",\"支出\",\"购物\",\"10\",\"x\"\n"
+        val txs = CsvCodec.decode(csv, defaultBook = "我的账本")
+        assertEquals(1, txs.size)
+        assertEquals("我的账本", txs[0].book)
     }
 }
