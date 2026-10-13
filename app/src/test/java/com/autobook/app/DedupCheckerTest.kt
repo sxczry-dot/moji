@@ -52,9 +52,18 @@ class DedupCheckerTest {
 
     @Test
     fun `跨渠道真实商户不同不判重`() {
+        // 商户名不同且间隔超过 2 分钟（不同商户窗口 120s）才放行
         val a = tx(source = "微信", merchant = "美团", timestamp = t0)
-        val b = tx(source = "短信", merchant = "星巴克", timestamp = t0 + 30_000)
+        val b = tx(source = "短信", merchant = "星巴克", timestamp = t0 + 3 * 60_000)
         assertFalse(DedupChecker.isDuplicateOf(a, b))
+    }
+
+    @Test
+    fun `跨渠道商户名不同但时间极近判重`() {
+        // 同一笔交易两渠道商户名不同（短信=公司全称、通知=通用标题）：2 分钟内判重并交由合并逻辑
+        val sms = tx(source = "短信", merchant = "上海玄霆娱乐信息科技有限公司", timestamp = t0)
+        val notif = tx(source = "支付宝", merchant = "交易提醒", timestamp = t0 + 60_000)
+        assertTrue(DedupChecker.isDuplicateOf(sms, notif))
     }
 
     @Test

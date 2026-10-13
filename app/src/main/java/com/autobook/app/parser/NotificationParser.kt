@@ -154,13 +154,21 @@ object NotificationParser {
             .replace("：", " ")
             .replace(":", " ")
             .trim()
-        if (cleaned.isNotEmpty() && cleaned.length <= 20) return cleaned
+        if (cleaned.isNotEmpty() && cleaned.length <= 20 &&
+            cleaned !in ParseRules.genericTitles
+        ) return cleaned
 
-        for (p in merchantPatterns) {
+        // 通用标题（交易提醒/动账通知等）或空标题：从正文提取商户
+        for (p in textMerchantPatterns) {
             val m = p.find(text) ?: continue
             val name = m.groupValues[1].trim()
-            if (name.isNotEmpty()) return name
+            if (name.length >= 2 && !isAccountPlaceholder(name) && name !in merchantStopWords) return name
         }
         return ""
     }
+
+    /** 正文商户提取模式："你在起点读书有一笔…" 等支付宝句式 */
+    private val textMerchantPatterns = listOf(
+        Regex("""你在(.{1,16}?)(?:有|购买|消费|支付|平台|商户|商城)""")
+    ) + merchantPatterns
 }

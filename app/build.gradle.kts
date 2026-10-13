@@ -21,8 +21,8 @@ android {
         applicationId = "com.autobook.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 141
-        versionName = "4.95"
+        versionCode = 142
+        versionName = "4.96"
         resConfigs("zh")
     }
 
@@ -98,4 +98,5 @@ ksp {
     // Robolectric 迁移测试经 AssetManager 读取
     arg("room.schemaLocation", "$projectDir/src/test/assets")
 }
+
 

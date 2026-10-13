@@ -90,7 +90,12 @@ object TransactionSaver {
                     // 跨渠道去重合并：同笔交易经两个渠道到达，标注来源并富集余额
                     val crossSource = existing.source.isNotEmpty() && existing.source != tx.source
                     val balanceEnriched = existing.balanceAfter <= 0 && tx.balanceAfter > 0
-                    if (merchantEnriched || crossSource || balanceEnriched) {
+                    // 新到的商户名更准确时替换（现有是兜底/通用标题，或新名更长更具体）
+                    val existingGeneric = existing.merchant in com.autobook.app.parser.ParseRules.genericTitles
+                    val betterMerchant = crossSource && tx.merchant.isNotBlank() &&
+                        tx.merchant != tx.source &&
+                        (existingIsFallback || existingGeneric || tx.merchant.length > existing.merchant.length)
+                    if (merchantEnriched || betterMerchant || crossSource || balanceEnriched) {
                         val hasTag = existing.tags.split(Regex("\\s+")).any { it == Transaction.TAG_DUAL_SOURCE }
                         val newTags = if (crossSource && !hasTag) {
                             listOf(existing.tags, Transaction.TAG_DUAL_SOURCE)
@@ -100,7 +105,7 @@ object TransactionSaver {
                         }
                         repo.update(
                             existing.copy(
-                                merchant = if (merchantEnriched) tx.merchant else existing.merchant,
+                                merchant = if (merchantEnriched || betterMerchant) tx.merchant else existing.merchant,
                                 balanceAfter = if (balanceEnriched) tx.balanceAfter else existing.balanceAfter,
                                 tags = newTags
                             )

@@ -353,6 +353,18 @@ class ParserRegressionTest {
     }
 
     @Test
+    fun `支付宝通用标题从正文提取商户`() {
+        val r = NotificationParser.parse(
+            NotificationParser.ALIPAY_PKG,
+            "交易提醒",
+            "你在起点读书有一笔49.81元的免密/自动扣款支付，点击领取9个支付宝积分。"
+        )
+        assertEquals(49.81, r!!.amount, 0.001)
+        assertEquals("起点读书", r.merchant)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
     fun `退款识别纯函数`() {
         val saver = com.autobook.app.service.TransactionSaver
         assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "退款人民币50.00元已到账", ""))
