@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
+import com.autobook.app.data.localTime
 import com.autobook.app.util.formatAmount
 import com.autobook.app.util.formatCategory
 import com.autobook.app.util.formatTime
@@ -117,7 +118,7 @@ fun DrillDownDialog(
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                                 Text(
-                                    text = "${formatCategory(tx.category)} · ${formatTime(tx.timestamp)}",
+                                    text = "${formatCategory(tx.category)} · ${formatTime(tx.localTime())}",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

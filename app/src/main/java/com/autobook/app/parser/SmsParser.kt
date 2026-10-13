@@ -67,7 +67,8 @@ object SmsParser {
         val merchant = extractMerchant(body)
         val tradeTime = com.autobook.app.util.TradeTimeParser.parse(body)
         val refNo = com.autobook.app.util.RefNoParser.parse(body)
-        return ParsedResult(amount, type, merchant, body, tradeTime, refNo)
+        val balance = extractBalance(body)
+        return ParsedResult(amount, type, merchant, body, tradeTime, refNo, balance)
     }
 
     private fun isBankSender(sender: String): Boolean {
@@ -78,6 +79,10 @@ object SmsParser {
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
     private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
+    private val balanceRegex = Regex("""余额\s*(?:为|：|:)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)(?:\s*元)?""")
+
+    fun extractBalance(text: String): Double =
+        balanceRegex.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() ?: 0.0
 
     private fun extractAmount(body: String): Double? {
         val cleanedBody = body.replace(rebateAmountRegex, "").replace(originalPriceRegex, "")

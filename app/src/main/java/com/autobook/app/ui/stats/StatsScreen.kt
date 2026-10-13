@@ -60,6 +60,7 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import com.autobook.app.data.refundSum
 import com.autobook.app.ui.CategoryUi
 import com.autobook.app.ui.theme.ExpenseRed
@@ -88,7 +89,7 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
     val hideAmount by viewModel.hideAmount.collectAsStateWithLifecycle()
     val yearTxs = remember(allTxs, currentBook, yearStart, yearEnd) {
         allTxs.filter {
-            it.timestamp in yearStart until yearEnd && it.book == currentBook
+            it.localTime() in yearStart until yearEnd && it.book == currentBook
         }
     }
     val displayTxs = if (dataMode == 0) monthTxs else yearTxs
@@ -208,7 +209,7 @@ fun StatsScreen(modifier: Modifier = Modifier, statsTick: Int = 0) {
             val lastYearKey = "${lastYearStart.timeInMillis}_${lastYearEnd.timeInMillis}"
             val lastYearTodayTxs = remember(allTxs, currentBook, lastYearKey) {
                 allTxs.filter {
-                    it.timestamp in lastYearStart.timeInMillis until lastYearEnd.timeInMillis &&
+                    it.localTime() in lastYearStart.timeInMillis until lastYearEnd.timeInMillis &&
                         it.book == currentBook
                 }
             }
@@ -326,7 +327,7 @@ Row(verticalAlignment = Alignment.CenterVertically) {
                 currentMonth.year - 1, currentMonth.monthValue - 1
             )
             val lastYearExpense = allTxs.filter {
-                it.timestamp in lastYearRange.first until lastYearRange.second &&
+                it.localTime() in lastYearRange.first until lastYearRange.second &&
                     it.book == currentBook
             }.expenseSum()
             MonthCompareCard(

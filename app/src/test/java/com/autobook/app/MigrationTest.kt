@@ -82,21 +82,28 @@ class MigrationTest {
         return db
     }
 
+    private fun openWithMigrations(name: String): AppDatabase {
+        return Room.databaseBuilder(context, AppDatabase::class.java, name)
+            .addMigrations(*AppDatabase.MIGRATIONS)
+            .build()
+    }
+
     @Test
-    fun `v5 schema 可建库且与当前实体一致`() {
-        val name = "migration_v5_${System.nanoTime()}.db"
-        val legacy = createLegacyDb(name, 5)
+    fun `v6 schema 可建库且与当前实体一致`() {
+        val name = "migration_v6_${System.nanoTime()}.db"
+        val legacy = createLegacyDb(name, 6)
         legacy.close()
 
-        // 用当前代码 Room 打开 v5 库：身份哈希与表结构校验失败会抛 IllegalStateException，
+        // 用当前代码 Room 打开 v6 库：身份哈希与表结构校验失败会抛 IllegalStateException，
         // 能走到读写即证明 schema 与实体一致
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, name).build()
+        val db = openWithMigrations(name)
         val dao = db.transactionDao()
         kotlinx.coroutines.runBlocking {
             dao.insert(
                 com.autobook.app.data.Transaction(
                     amount = 1.0, type = 0, category = "餐饮美食",
-                    merchant = "测试", source = "测试", timestamp = 123L
+                    merchant = "测试", source = "测试", timestamp = 123L,
+                    localTimestamp = 123L
                 )
             )
         }
@@ -106,10 +113,31 @@ class MigrationTest {
     }
 
     @Test
-    fun `迁移链声明覆盖1到5`() {
+    fun `v5 升级到 v6 迁移正确`() {
+        val name = "migration_5_6_${System.nanoTime()}.db"
+        val legacy = createLegacyDb(name, 5)
+        // v5 库预置一行数据（含毫秒时间戳）
+        legacy.execSQL(
+            "INSERT INTO transactions (amount, type, category, merchant, source, timestamp, tags, book, refNo, insertedAt) " +
+                "VALUES (25.5, 0, '餐饮美食', '美团', '微信', 1755916200123, '', '默认账本', '', 1755916200123)"
+        )
+        legacy.close()
+
+        // 用当前代码 Room 打开 → 执行 5→6 迁移
+        val db = openWithMigrations(name)
+        val txs = kotlinx.coroutines.runBlocking { db.transactionDao().getAllOnce() }
+        assertEquals(1, txs.size)
+        assertEquals(1755916200123L, txs[0].localTimestamp) // 迁移回填墙钟时间
+        assertEquals(0.0, txs[0].balanceAfter, 0.001)      // 余额默认 0
+        assertEquals(25.5, txs[0].amount, 0.001)
+        db.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun `迁移链声明覆盖1到6`() {
         // v1-v4 schema 未导出无法做全链路，但验证当前迁移链无缺口（防未来改坏）
-        // 该测试在 v6 迁移加入时扩展为真实 v5→v6 测试
-        val db = Room.databaseBuilder(context, AppDatabase::class.java, "migration_probe.db").build()
+        val db = openWithMigrations("migration_probe.db")
         db.close()
         context.deleteDatabase("migration_probe.db")
     }

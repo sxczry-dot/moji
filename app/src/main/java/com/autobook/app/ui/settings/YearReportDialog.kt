@@ -31,6 +31,7 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import com.autobook.app.data.refundSum
 import com.autobook.app.util.TimeUtils
 import com.autobook.app.util.formatAmount
@@ -47,7 +48,7 @@ fun YearReportDialog(onDismiss: () -> Unit) {
     val (start, end) = TimeUtils.monthRange(reportYear, 0)
         .let { it.first to TimeUtils.monthRange(reportYear, 11).second }
     val yearTxs = allTxs.filter {
-        it.timestamp in start until end && it.book == currentBook
+        it.localTime() in start until end && it.book == currentBook
     }
 
     val totalExpense = yearTxs.expenseSum()
@@ -69,7 +70,7 @@ fun YearReportDialog(onDismiss: () -> Unit) {
 
     val topDay = yearTxs
         .filter { it.type == Transaction.TYPE_EXPENSE }
-        .groupBy { TimeUtils.dayStartOf(it.timestamp) }
+        .groupBy { TimeUtils.dayStartOf(it.localTime()) }
         .maxByOrNull { (_, list) -> list.sumOf { it.amount } }
 
     AlertDialog(

@@ -13,6 +13,7 @@ import com.autobook.app.R
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import com.autobook.app.util.formatAmountGrouped
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -94,7 +95,7 @@ class BudgetWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_title, bookName + " · 本月")
             val todayStart = com.autobook.app.util.TimeUtils.dayStartOf(System.currentTimeMillis())
             val todayExpense = txs.filter {
-                it.type == Transaction.TYPE_EXPENSE && it.timestamp >= todayStart
+                it.type == Transaction.TYPE_EXPENSE && it.localTime() >= todayStart
             }.sumOf { it.amount }
             views.setTextViewText(
                 R.id.widget_today,

@@ -30,6 +30,7 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         handleIntent(intent)
         CoroutineScope(Dispatchers.IO).launch {
             com.autobook.app.service.RecurringManager.checkAndRun(applicationContext)
+            com.autobook.app.service.BillReminder.checkAndNotify(applicationContext)
         }
         com.autobook.app.service.ServiceGuard.schedule(applicationContext)
         setContent {

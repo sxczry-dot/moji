@@ -75,7 +75,9 @@ object TransactionSaver {
                 timestamp = if (parsed.tradeTime in 1..now) parsed.tradeTime else now,
                 book = com.autobook.app.util.AppSettings.DEFAULT_BOOK,
                 refNo = parsed.refNo,
-                tags = tags
+                tags = tags,
+                balanceAfter = parsed.balance,
+                localTimestamp = if (parsed.tradeTime in 1..now) parsed.tradeTime else now
             )
 
             when (val result = repo.insertAndGetMonth(tx, now)) {
@@ -83,8 +85,26 @@ object TransactionSaver {
                     val existing = result.existing
                     val existingIsFallback = existing.merchant.isBlank() ||
                         existing.merchant == existing.source
-                    if (existingIsFallback && tx.merchant.isNotBlank() && tx.merchant != tx.source) {
-                        repo.update(existing.copy(merchant = tx.merchant))
+                    val merchantEnriched = existingIsFallback &&
+                        tx.merchant.isNotBlank() && tx.merchant != tx.source
+                    // 跨渠道去重合并：同笔交易经两个渠道到达，标注来源并富集余额
+                    val crossSource = existing.source.isNotEmpty() && existing.source != tx.source
+                    val balanceEnriched = existing.balanceAfter <= 0 && tx.balanceAfter > 0
+                    if (merchantEnriched || crossSource || balanceEnriched) {
+                        val hasTag = existing.tags.split(Regex("\\s+")).any { it == Transaction.TAG_DUAL_SOURCE }
+                        val newTags = if (crossSource && !hasTag) {
+                            listOf(existing.tags, Transaction.TAG_DUAL_SOURCE)
+                                .filter { it.isNotBlank() }.joinToString(" ")
+                        } else {
+                            existing.tags
+                        }
+                        repo.update(
+                            existing.copy(
+                                merchant = if (merchantEnriched) tx.merchant else existing.merchant,
+                                balanceAfter = if (balanceEnriched) tx.balanceAfter else existing.balanceAfter,
+                                tags = newTags
+                            )
+                        )
                     }
                     val time = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
                         .format(java.util.Date())
@@ -95,6 +115,10 @@ object TransactionSaver {
                     return Outcome.Duplicate
                 }
                 is com.autobook.app.data.SaveResult.Inserted -> {
+                    // 还款入账 → 核销对应信用卡账单提醒
+                    if (parsed.rawText.contains("还款")) {
+                        com.autobook.app.util.AppSettings.clearBillDuesMatching(context, parsed.amount)
+                    }
                     val monthTxs = result.monthTxs
                     val currentBook = com.autobook.app.util.AppSettings.getCurrentBook(context)
                     if (currentBook == tx.book) {

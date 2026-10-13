@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Transaction::class], version = 5, exportSchema = true)
+@Database(entities = [Transaction::class], version = 6, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun transactionDao(): TransactionDao
@@ -15,6 +15,24 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE transactions ADD COLUMN balanceAfter REAL NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE transactions ADD COLUMN localTimestamp INTEGER NOT NULL DEFAULT 0"
+                )
+                // 历史数据按墙钟时间回填（原 timestamp 即当时本地时区的墙钟解释）
+                db.execSQL(
+                    "UPDATE transactions SET localTimestamp = timestamp WHERE localTimestamp = 0"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_transactions_book_localTimestamp ON transactions(book, localTimestamp)"
+                )
+            }
+        }
 
         private val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -74,13 +92,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** 全量迁移链：正式路径与迁移测试共用，避免测试漏挂 */
+        val MIGRATIONS = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+        )
+
         fun get(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
                     "autobook.db"
-                ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5).build().also { instance = it }
+                ).addMigrations(*MIGRATIONS).build().also { instance = it }
             }
         }
     }

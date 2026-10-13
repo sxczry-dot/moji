@@ -511,4 +511,124 @@ object AppSettings {
             .putBoolean(KEY_RECURRING_DONE_PREFIX + key + "_" + year + month, true)
             .apply()
     }
+
+    // ===== 信用卡账单还款日（JSON 列表）=====
+
+    private const val KEY_BILL_DUES = "bill_dues"
+    private const val KEY_BILL_NOTIFIED_PREFIX = "bill_notified_"
+
+    fun getBillDues(context: Context): List<com.autobook.app.util.BillDueParser.BillDue> {
+        val saved = prefs(context).getString(KEY_BILL_DUES, null) ?: return emptyList()
+        if (!saved.trimStart().startsWith("[")) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(saved)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                com.autobook.app.util.BillDueParser.BillDue(
+                    amount = o.optDouble("amount", 0.0),
+                    minPayment = o.optDouble("min", 0.0),
+                    dueDate = java.time.LocalDate.parse(o.optString("due", ""))
+                )
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun upsertBillDue(context: Context, due: com.autobook.app.util.BillDueParser.BillDue) {
+        val list = getBillDues(context).filter { it.dueDate != due.dueDate }.toMutableList()
+        list.add(due)
+        saveBillDues(context, list)
+    }
+
+    fun saveBillDues(context: Context, dues: List<com.autobook.app.util.BillDueParser.BillDue>) {
+        val arr = org.json.JSONArray()
+        dues.forEach { d ->
+            arr.put(
+                org.json.JSONObject().apply {
+                    put("amount", d.amount)
+                    put("min", d.minPayment)
+                    put("due", d.dueDate.toString())
+                }
+            )
+        }
+        prefs(context).edit().putString(KEY_BILL_DUES, arr.toString()).apply()
+    }
+
+    /** 还款入账后核销对应账单（金额匹配±0.02） */
+    fun clearBillDuesMatching(context: Context, amount: Double) {
+        val list = getBillDues(context).filter { kotlin.math.abs(it.amount - amount) >= 0.02 }
+        saveBillDues(context, list)
+    }
+
+    fun isBillNotified(context: Context, key: String): Boolean =
+        prefs(context).getBoolean(KEY_BILL_NOTIFIED_PREFIX + key, false)
+
+    fun markBillNotified(context: Context, key: String) {
+        prefs(context).edit().putBoolean(KEY_BILL_NOTIFIED_PREFIX + key, true).apply()
+    }
+
+    // ===== 保存式搜索筛选器（JSON 列表）=====
+
+    private const val KEY_SAVED_FILTERS = "saved_filters"
+
+    data class SavedFilter(
+        val name: String,
+        val category: String? = null,
+        val min: Double? = null,
+        val max: Double? = null,
+        val fromMonth: String? = null, // "yyyy-MM"
+        val toMonth: String? = null,
+        val starOnly: Boolean = false
+    )
+
+    fun getSavedFilters(context: Context): List<SavedFilter> {
+        val saved = prefs(context).getString(KEY_SAVED_FILTERS, null) ?: return emptyList()
+        if (!saved.trimStart().startsWith("[")) return emptyList()
+        return try {
+            val arr = org.json.JSONArray(saved)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                SavedFilter(
+                    name = o.optString("name", ""),
+                    category = o.optString("cat", "").ifBlank { null },
+                    min = o.optDouble("min", Double.NaN).takeIf { !it.isNaN() },
+                    max = o.optDouble("max", Double.NaN).takeIf { !it.isNaN() },
+                    fromMonth = o.optString("from", "").ifBlank { null },
+                    toMonth = o.optString("to", "").ifBlank { null },
+                    starOnly = o.optBoolean("star", false)
+                ).takeIf { it.name.isNotBlank() }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveSavedFilters(context: Context, filters: List<SavedFilter>) {
+        val arr = org.json.JSONArray()
+        filters.forEach { f ->
+            arr.put(
+                org.json.JSONObject().apply {
+                    put("name", f.name)
+                    put("cat", f.category ?: "")
+                    f.min?.let { put("min", it) }
+                    f.max?.let { put("max", it) }
+                    put("from", f.fromMonth ?: "")
+                    put("to", f.toMonth ?: "")
+                    put("star", f.starOnly)
+                }
+            )
+        }
+        prefs(context).edit().putString(KEY_SAVED_FILTERS, arr.toString()).apply()
+    }
+
+    fun addSavedFilter(context: Context, filter: SavedFilter) {
+        val list = getSavedFilters(context).filter { it.name != filter.name }.toMutableList()
+        list.add(0, filter)
+        saveSavedFilters(context, list)
+    }
+
+    fun removeSavedFilter(context: Context, name: String) {
+        saveSavedFilters(context, getSavedFilters(context).filter { it.name != name })
+    }
 }

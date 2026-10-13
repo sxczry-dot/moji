@@ -55,6 +55,18 @@ fun RecurringDialog(onDismiss: () -> Unit) {
     var showAdd by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<RecurringRule?>(null) }
     var editingIndex by remember { mutableIntStateOf(-1) }
+    // 循环扣款识别：同商户同金额稳定间隔的支出 → 一键转周期规则
+    var candidates by remember {
+        mutableStateOf<List<com.autobook.app.util.RecurringDetector.Candidate>>(emptyList())
+    }
+    var showCandidates by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        candidates = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            com.autobook.app.util.RecurringDetector.findCandidates(
+                com.autobook.app.AutoBookApp.instance.repository.getAllOnce()
+            )
+        }
+    }
 
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
@@ -62,6 +74,11 @@ fun RecurringDialog(onDismiss: () -> Unit) {
         title = { Text("周期记账") },
         text = {
             Column {
+                if (candidates.isNotEmpty()) {
+                    TextButton(onClick = { showCandidates = true }) {
+                        Text("✨ 发现 ${candidates.size} 个疑似周期支出，可一键添加")
+                    }
+                }
                 if (rules.isEmpty()) {
                     Text(
                         text = "还没有周期规则。添加后，每月到日会自动记一笔（如每月15日房租）。",
@@ -183,6 +200,67 @@ fun RecurringDialog(onDismiss: () -> Unit) {
             TextButton(onClick = onDismiss) { Text("关闭") }
         }
     )
+
+    if (showCandidates) {
+        androidx.compose.material3.AlertDialog(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            onDismissRequest = { showCandidates = false },
+            title = { Text("疑似周期支出") },
+            text = {
+                Column {
+                    Text(
+                        text = "同商户、同金额、间隔稳定出现的支出，可能是订阅/水电/会员，可一键转周期规则。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    candidates.forEach { c ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    text = "${c.merchant} · ¥${com.autobook.app.util.formatAmountGrouped(c.amount)}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    maxLines = 1
+                                )
+                                Text(
+                                    text = "出现 ${c.count} 笔，约每 ${c.intervalDays} 天一次" +
+                                        if (c.book != AppSettings.DEFAULT_BOOK) " · ${c.book}" else "",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            TextButton(
+                                onClick = {
+                                    val rule = RecurringRule(
+                                        id = System.currentTimeMillis(),
+                                        name = c.merchant,
+                                        amount = c.amount,
+                                        type = Transaction.TYPE_EXPENSE,
+                                        category = c.category,
+                                        day = if (c.intervalDays <= 8) c.lastDayOfWeek else c.lastDayOfMonth,
+                                        merchant = c.merchant,
+                                        period = if (c.intervalDays <= 8) 1 else 0,
+                                        book = c.book
+                                    )
+                                    rules = rules + rule
+                                    AppSettings.saveRecurringRules(context, rules)
+                                    candidates = candidates.filter { it != c }
+                                }
+                            ) { Text("添加") }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showCandidates = false }) { Text("关闭") }
+            }
+        )
+    }
 
     if (showAdd) {
         AddRecurringRuleDialog(

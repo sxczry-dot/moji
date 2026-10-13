@@ -84,6 +84,7 @@ class GuardReceiver : BroadcastReceiver() {
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
                 RecurringManager.checkAndRun(context)
+                BillReminder.checkAndNotify(context)
             } catch (_: Exception) {
             }
         }
@@ -102,6 +103,7 @@ class GuardWorker(
             }
             kotlinx.coroutines.runBlocking {
                 RecurringManager.checkAndRun(applicationContext)
+                BillReminder.checkAndNotify(applicationContext)
             }
             Result.success()
         } catch (_: Exception) {

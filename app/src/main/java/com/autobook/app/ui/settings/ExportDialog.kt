@@ -21,6 +21,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.autobook.app.data.localTime
 import com.autobook.app.util.AppSettings
 import java.time.YearMonth
 
@@ -46,7 +47,7 @@ fun ExportDialog(
     val previewCount = allTxs.count { tx ->
         (mode != 1 || tx.book == selectedBook) &&
             (mode != 2 || java.util.Calendar.getInstance().apply {
-                timeInMillis = tx.timestamp
+                timeInMillis = tx.localTime()
             }.get(java.util.Calendar.YEAR) == selectedYear)
     }
 

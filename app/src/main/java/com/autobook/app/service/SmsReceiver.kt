@@ -25,6 +25,12 @@ class SmsReceiver : BroadcastReceiver() {
         val safeBody = body.replace("\\n", " ").take(60)
 
         if (parsed == null) {
+            // 信用卡账单短信（应还款/还款日）：记录还款日用于提醒，不作为流水记账
+            if (com.autobook.app.util.BillDueParser.hasBillInfo(body)) {
+                com.autobook.app.util.BillDueParser.parse(body)?.let {
+                    com.autobook.app.util.AppSettings.upsertBillDue(context, it)
+                }
+            }
             val reason = com.autobook.app.util.NotifDiagnose.reasonOf(body)
             val result = if (reason != null) "未匹配（$reason）" else "未匹配"
             // SharedPreferences 读写挪到 IO 线程，避免主线程卡顿

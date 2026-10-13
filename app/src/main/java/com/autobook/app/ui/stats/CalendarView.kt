@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import com.autobook.app.util.formatAmount
 import com.autobook.app.util.formatDay
 import com.autobook.app.ui.theme.ExpenseRed
@@ -60,7 +61,7 @@ fun CalendarMonthView(
 
     if (yearMode) {
         val monthGrids = remember(txs) {
-            (1..12).map { m -> m to txs.filter { monthOf(it.timestamp) == m } }
+            (1..12).map { m -> m to txs.filter { monthOf(it.localTime()) == m } }
         }
         Column {
             monthGrids.forEach { (m, monthList) ->
@@ -93,9 +94,9 @@ fun CalendarMonthView(
 
     if (selectedDay != null) {
         val list = if (yearMode && selectedMonth != null) {
-            txs.filter { monthOf(it.timestamp) == selectedMonth && dayOf(it.timestamp) == selectedDay }
+            txs.filter { monthOf(it.localTime()) == selectedMonth && dayOf(it.localTime()) == selectedDay }
         } else {
-            txs.filter { dayOf(it.timestamp) == selectedDay }
+            txs.filter { dayOf(it.localTime()) == selectedDay }
         }
         DayDetailDialog(
             dayTxs = list,
@@ -123,12 +124,12 @@ private fun MonthGrid(
 
     val dayExpense = remember(txs) {
         txs.filter { it.type == Transaction.TYPE_EXPENSE }
-            .groupBy { dayOf(it.timestamp) }
+            .groupBy { dayOf(it.localTime()) }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
     }
     val dayIncome = remember(txs) {
         txs.filter { it.type == Transaction.TYPE_INCOME }
-            .groupBy { dayOf(it.timestamp) }
+            .groupBy { dayOf(it.localTime()) }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
     }
     val hasData = dayExpense.keys + dayIncome.keys
@@ -186,7 +187,7 @@ private fun DayDetailDialog(
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
         onDismissRequest = onDismiss,
-        title = { Text(formatDay(dayTxs.firstOrNull()?.timestamp ?: System.currentTimeMillis())) },
+        title = { Text(formatDay(dayTxs.firstOrNull()?.localTime() ?: System.currentTimeMillis())) },
         text = {
             Column(
                 modifier = Modifier

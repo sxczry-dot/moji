@@ -2,6 +2,7 @@ package com.autobook.app.data
 
 import com.autobook.app.parser.CategoryClassifier
 import com.autobook.app.util.formatAmount
+import com.autobook.app.data.localTime
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -20,7 +21,7 @@ object CsvCodec {
             sb.append(escape(tx.category)).append(",")
             sb.append(escape(tx.merchant)).append(",")
             sb.append(escape(tx.source)).append(",")
-            sb.append(timeFormat.format(Date(tx.timestamp))).append(",")
+            sb.append(timeFormat.format(Date(tx.localTime()))).append(",")
             sb.append(escape(tx.tags)).append(",")
             sb.append(escape(tx.book)).append("\n")
         }
@@ -163,6 +164,7 @@ object CsvCodec {
             merchant = merchant,
             source = source,
             timestamp = timestamp,
+            localTimestamp = timestamp,
             tags = cell("标签"),
             book = cell("账本").ifEmpty { defaultBook }
         )
@@ -220,6 +222,7 @@ object CsvCodec {
             merchant = merchant,
             source = source,
             timestamp = timestamp,
+            localTimestamp = timestamp,
             tags = fields.getOrNull(6)?.trim() ?: "",
             book = fields.getOrNull(7)?.trim()?.ifEmpty { defaultBook } ?: defaultBook
         )

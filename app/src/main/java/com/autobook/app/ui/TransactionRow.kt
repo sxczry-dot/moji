@@ -54,6 +54,7 @@ import com.autobook.app.util.formatCategory
 import com.autobook.app.util.formatAmount
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.isRefund
+import com.autobook.app.data.localTime
 import com.autobook.app.ui.theme.ExpenseRed
 import com.autobook.app.ui.theme.IncomeBlue
 import kotlinx.coroutines.launch
@@ -306,10 +307,25 @@ fun TransactionRow(
                             )
                         }
                     }
+                    if (tx.tags.split(Regex("\\s+")).any { it == Transaction.TAG_DUAL_SOURCE }) {
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = Transaction.TAG_DUAL_SOURCE,
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
 
                 }
                 Text(
-                    text = "${formatCategory(tx.category)} · ${formatTime(tx.timestamp)}",
+                    text = "${formatCategory(tx.category)} · ${formatTime(tx.localTime())}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

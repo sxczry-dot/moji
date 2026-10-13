@@ -26,7 +26,12 @@ class TransactionRepository(context: Context) {
 
     suspend fun add(tx: Transaction) {
         // 补到达时间：让手动/周期记录参与自动记账的去重候选池，避免与通知重复记账
-        dao.insert(tx.copy(insertedAt = System.currentTimeMillis()))
+        dao.insert(
+            tx.copy(
+                insertedAt = System.currentTimeMillis(),
+                localTimestamp = if (tx.localTimestamp > 0) tx.localTimestamp else tx.timestamp
+            )
+        )
     }
 
     suspend fun addAll(txs: List<Transaction>) {

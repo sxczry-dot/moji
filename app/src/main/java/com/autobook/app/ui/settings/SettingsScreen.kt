@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.outlined.Backup
+import androidx.compose.material.icons.outlined.Balance
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.Assessment
 import androidx.compose.material.icons.outlined.Block
@@ -93,6 +94,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.autobook.app.AutoBookApp
 import com.autobook.app.data.CsvCodec
+import com.autobook.app.data.localTime
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.nio.ByteBuffer
@@ -120,6 +122,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var showCustomColor by remember { mutableStateOf(false) }
     var showMergeMerchants by remember { mutableStateOf(false) }
     var showSelfCheck by remember { mutableStateOf(false) }
+    var showReconciliation by remember { mutableStateOf(false) }
     var showCrashLog by remember { mutableStateOf(false) }
     var showClearAll by remember { mutableStateOf(false) }
     var showClearAllFinal by remember { mutableStateOf(false) }
@@ -1029,6 +1032,17 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         Text("自动记账自检")
                     }
                     Spacer(Modifier.width(12.dp))
+                    OutlinedButton(onClick = { showReconciliation = true }, modifier = Modifier.width(150.dp)) {
+                        Icon(
+                            Icons.Outlined.Balance,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("余额对账")
+                    }
+                    Spacer(Modifier.width(12.dp))
                     OutlinedButton(onClick = { showMergeMerchants = true }, modifier = Modifier.width(150.dp)) {
                         Icon(
                             androidx.compose.material.icons.Icons.Outlined.CallMerge,
@@ -1156,7 +1170,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     val days = ((System.currentTimeMillis() - earliest) / 86_400_000L).toInt()
                     val monthRange = com.autobook.app.util.TimeUtils.currentMonthRange()
                     val monthTxs = allTxs.filter {
-                        it.timestamp in monthRange.first until monthRange.second
+                        it.localTime() in monthRange.first until monthRange.second
                     }
                     val monthCount = monthTxs.size
                     val monthExpense = monthTxs
@@ -1346,7 +1360,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.91\n" +
+                                        "应用版本：4.92\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1363,7 +1377,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.91",
+            text = "默记 v4.92",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1470,6 +1484,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
     if (showSelfCheck) {
         SelfCheckDialog(onDismiss = { showSelfCheck = false })
+    }
+
+    if (showReconciliation) {
+        ReconciliationDialog(onDismiss = { showReconciliation = false })
     }
 
     if (showClearAll) {
@@ -1765,7 +1783,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             (book == null || tx.book == book) &&
                                 (year == null ||
                                     java.util.Calendar.getInstance().apply {
-                                        timeInMillis = tx.timestamp
+                                        timeInMillis = tx.localTime()
                                     }.get(java.util.Calendar.YEAR) == year)
                         }
                         val csv = CsvCodec.encode(filtered)

@@ -4,6 +4,7 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import com.autobook.app.util.TimeUtils
 import java.time.YearMonth
 
@@ -21,7 +22,7 @@ object StatsCalculator {
         (monthsBack - 1 downTo 0).map { offset ->
             val m = current.minusMonths(offset.toLong())
             val (start, end) = TimeUtils.monthRange(m.year, m.monthValue - 1)
-            val inMonth = bookTxs.filter { it.timestamp in start until end }
+            val inMonth = bookTxs.filter { it.localTime() in start until end }
             com.autobook.app.viewmodel.MainViewModel.MonthStat(
                 yearMonth = m,
                 expense = inMonth.expenseSum(),
@@ -47,6 +48,6 @@ object StatsCalculator {
     /** 每日支出（时间戳→当天支出合计） */
     fun dailyExpense(txs: List<Transaction>): Map<Long, Double> =
         txs.filter { it.type == Transaction.TYPE_EXPENSE }
-            .groupBy { TimeUtils.dayStartOf(it.timestamp) }
+            .groupBy { TimeUtils.dayStartOf(it.localTime()) }
             .mapValues { (_, list) -> list.sumOf { it.amount } }
 }

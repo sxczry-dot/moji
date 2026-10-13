@@ -112,7 +112,8 @@ object NotificationParser {
         }
         val tradeTime = com.autobook.app.util.TradeTimeParser.parse(full)
         val refNo = com.autobook.app.util.RefNoParser.parse(full)
-        return ParsedResult(amount, type, merchant, full, tradeTime, refNo)
+        val balance = extractBalance(full)
+        return ParsedResult(amount, type, merchant, full, tradeTime, refNo, balance)
     }
 
     private val contextualAmountRegex = Regex(
@@ -121,6 +122,10 @@ object NotificationParser {
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
     private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
+    private val balanceRegex = Regex("""余额\s*(?:为|：|:)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)(?:\s*元)?""")
+
+    fun extractBalance(text: String): Double =
+        balanceRegex.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() ?: 0.0
 
     private val yuanAmountRegex = Regex("""(?<![0-9.])(\d+(?:\.\d{1,2})?)\s*元""")
 

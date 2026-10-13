@@ -14,6 +14,7 @@ import com.autobook.app.data.Categories
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import java.time.YearMonth
 
 object MonthCardImage {
@@ -103,7 +104,7 @@ object MonthCardImage {
         if (yearMode) {
             val topDay = txs
                 .filter { it.type == Transaction.TYPE_EXPENSE }
-                .groupBy { com.autobook.app.util.TimeUtils.dayStartOf(it.timestamp) }
+                .groupBy { com.autobook.app.util.TimeUtils.dayStartOf(it.localTime()) }
                 .maxByOrNull { (_, list) -> list.sumOf { it.amount } }
             if (topDay != null) {
                 val daySum = topDay.value.sumOf { it.amount }

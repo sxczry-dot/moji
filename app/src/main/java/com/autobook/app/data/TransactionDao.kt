@@ -20,7 +20,15 @@ interface TransactionDao {
     @androidx.room.Transaction
     suspend fun insertAllImported(txs: List<Transaction>) {
         val now = System.currentTimeMillis()
-        insertAll(txs.map { it.copy(insertedAt = now, source = it.source.ifEmpty { "导入" }) })
+        insertAll(
+            txs.map {
+                it.copy(
+                    insertedAt = now,
+                    source = it.source.ifEmpty { "导入" },
+                    localTimestamp = if (it.localTimestamp > 0) it.localTimestamp else it.timestamp
+                )
+            }
+        )
     }
 
     /** 备份恢复：单事务内完成删+插，避免中途失败造成全部数据丢失 */
@@ -28,7 +36,15 @@ interface TransactionDao {
     suspend fun replaceAll(txs: List<Transaction>) {
         val now = System.currentTimeMillis()
         deleteAll()
-        insertAll(txs.map { it.copy(insertedAt = now, source = it.source.ifEmpty { "导入" }) })
+        insertAll(
+            txs.map {
+                it.copy(
+                    insertedAt = now,
+                    source = it.source.ifEmpty { "导入" },
+                    localTimestamp = if (it.localTimestamp > 0) it.localTimestamp else it.timestamp
+                )
+            }
+        )
     }
 
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
@@ -55,10 +71,10 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
     fun getAll(): Flow<List<Transaction>>
 
-    @Query("SELECT * FROM transactions WHERE book = :book AND timestamp >= :start AND timestamp < :end ORDER BY timestamp DESC")
+    @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end ORDER BY localTimestamp DESC")
     fun getByRange(book: String, start: Long, end: Long): Flow<List<Transaction>>
 
-    @Query("SELECT * FROM transactions WHERE book = :book AND timestamp >= :start AND timestamp < :end")
+    @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end")
     suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction>
 
     @Query("SELECT * FROM transactions WHERE insertedAt >= :start ORDER BY insertedAt DESC")

@@ -334,6 +334,25 @@ class ParserRegressionTest {
     // ===== v4.91 退款净口径 =====
 
     @Test
+    fun `银行短信余额快照解析`() {
+        val r = SmsParser.parse(
+            "95599",
+            "【中国农业银行】山东省立医院门诊于09月12日15:20向您尾号3174账户完成财付通交易人民币385.01，余额1,189.03。"
+        )
+        assertEquals(1189.03, r!!.balance, 0.001)
+    }
+
+    @Test
+    fun `通知余额快照解析`() {
+        val r = NotificationParser.parse(
+            "com.android.bankabc",
+            "中国农业银行",
+            "您尾号3174账户发生一笔支出10.00元，余额1,179.03元。"
+        )
+        assertEquals(1179.03, r!!.balance, 0.001)
+    }
+
+    @Test
     fun `退款识别纯函数`() {
         val saver = com.autobook.app.service.TransactionSaver
         assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "退款人民币50.00元已到账", ""))

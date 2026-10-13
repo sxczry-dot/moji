@@ -6,5 +6,6 @@ data class ParsedResult(
     val merchant: String,
     val rawText: String = "",
     val tradeTime: Long = 0L,
-    val refNo: String = ""
+    val refNo: String = "",
+    val balance: Double = 0.0
 )

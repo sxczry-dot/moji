@@ -81,6 +81,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.autobook.app.data.Transaction
 import com.autobook.app.data.expenseSum
 import com.autobook.app.data.incomeSum
+import com.autobook.app.data.localTime
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.autobook.app.ui.MonthPickerLabel
@@ -169,6 +170,12 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     var sortMode by rememberSaveable { mutableIntStateOf(0) }
     var switchToBottom by remember { mutableStateOf(false) }
     var saveSuccessTick by remember { mutableIntStateOf(0) }
+    // 保存式筛选器
+    var savedFilters by remember {
+        mutableStateOf(com.autobook.app.util.AppSettings.getSavedFilters(listContext))
+    }
+    var showSaveFilter by remember { mutableStateOf(false) }
+    var saveFilterName by remember { mutableStateOf("") }
 
     val expense = remember(monthTxs) { monthTxs.expenseSum() }
     val income = remember(monthTxs) { monthTxs.incomeSum() }
@@ -205,10 +212,10 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                     com.autobook.app.data.Categories.primaryOf(tx.category) == filterCategory
                 val minMatch = min == null || tx.amount >= min
                 val maxMatch = max == null || tx.amount <= max
-                val fromMatch = filterFromMonth == null || tx.timestamp >= TimeUtils.monthRange(
+                val fromMatch = filterFromMonth == null || tx.localTime() >= TimeUtils.monthRange(
                     filterFromMonth!!.year, filterFromMonth!!.monthValue - 1
                 ).first
-                val toMatch = filterToMonth == null || tx.timestamp < TimeUtils.monthRange(
+                val toMatch = filterToMonth == null || tx.localTime() < TimeUtils.monthRange(
                     filterToMonth!!.year, filterToMonth!!.monthValue - 1
                 ).second
                 val starMatch = !starOnly || tx.id in starredIds
@@ -230,8 +237,8 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     }
     val groupedMonthTxs = remember(monthTxs, sortMode) {
         when (sortMode) {
-            1 -> monthTxs.sortedBy { it.timestamp }.groupBy { TimeUtils.dayStartOf(it.timestamp) }
-            else -> monthTxs.groupBy { TimeUtils.dayStartOf(it.timestamp) }
+            1 -> monthTxs.sortedBy { it.localTime() }.groupBy { TimeUtils.dayStartOf(it.localTime()) }
+            else -> monthTxs.groupBy { TimeUtils.dayStartOf(it.localTime()) }
         }
     }
     val amountSortedMonthTxs = remember(monthTxs) {
@@ -265,7 +272,7 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
         )
         kotlinx.coroutines.withTimeoutOrNull(2000L) {
             androidx.compose.runtime.snapshotFlow { monthTxs }.first { txs ->
-                txs.isEmpty() || txs.all { it.timestamp in range.first until range.second }
+                txs.isEmpty() || txs.all { it.localTime() in range.first until range.second }
             }
         }
         kotlinx.coroutines.delay(80)
@@ -1144,6 +1151,35 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                             modifier = Modifier.weight(1f)
                         )
                     }
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { showSaveFilter = true }) { Text("💾 保存当前条件") }
+                        Spacer(Modifier.weight(1f))
+                    }
+                    if (savedFilters.isNotEmpty()) {
+                        Text(
+                            text = "已保存筛选器",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        androidx.compose.foundation.layout.FlowRow {
+                            savedFilters.forEach { f ->
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {
+                                        filterCategory = f.category
+                                        filterMin = f.min?.let { com.autobook.app.util.formatAmount(it) } ?: ""
+                                        filterMax = f.max?.let { com.autobook.app.util.formatAmount(it) } ?: ""
+                                        filterFromMonth = f.fromMonth?.let { java.time.YearMonth.parse(it) }
+                                        filterToMonth = f.toMonth?.let { java.time.YearMonth.parse(it) }
+                                        starOnly = f.starOnly
+                                    },
+                                    label = { Text(f.name, fontSize = 11.sp) },
+                                    modifier = Modifier.padding(end = 4.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -1160,6 +1196,56 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                         showFilter = false
                     }
                 ) { Text("清除筛选") }
+            }
+        )
+    }
+
+    if (showSaveFilter) {
+        androidx.compose.material3.AlertDialog(
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            onDismissRequest = { showSaveFilter = false },
+            title = { Text("保存筛选器") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = saveFilterName,
+                        onValueChange = { saveFilterName = it },
+                        label = { Text("名称（如：上月大额支出）") },
+                        singleLine = true
+                    )
+                    Text(
+                        text = "同名筛选器会被覆盖",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val name = saveFilterName.trim()
+                        if (name.isNotEmpty()) {
+                            com.autobook.app.util.AppSettings.addSavedFilter(
+                                listContext,
+                                com.autobook.app.util.AppSettings.SavedFilter(
+                                    name = name,
+                                    category = filterCategory,
+                                    min = filterMin.toDoubleOrNull(),
+                                    max = filterMax.toDoubleOrNull(),
+                                    fromMonth = filterFromMonth?.toString(),
+                                    toMonth = filterToMonth?.toString(),
+                                    starOnly = starOnly
+                                )
+                            )
+                            savedFilters = com.autobook.app.util.AppSettings.getSavedFilters(listContext)
+                            saveFilterName = ""
+                            showSaveFilter = false
+                        }
+                    }
+                ) { Text("保存") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveFilter = false }) { Text("取消") }
             }
         )
     }
@@ -1181,7 +1267,7 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                     onClick = {
                         clipboard.setText(
                             androidx.compose.ui.text.AnnotatedString(
-                                "${com.autobook.app.util.formatDay(tx.timestamp)} " +
+                                "${com.autobook.app.util.formatDay(tx.localTime())} " +
                                     "${com.autobook.app.util.formatCategory(tx.category)} " +
                                     "${if (tx.type == Transaction.TYPE_EXPENSE) "-" else "+"}" +
                                     "${com.autobook.app.util.formatAmount(tx.amount)} ${tx.merchant}"
@@ -1242,7 +1328,7 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                     TextButton(
                         onClick = {
                             val text =
-                                "${com.autobook.app.util.formatDay(tx.timestamp)} " +
+                                "${com.autobook.app.util.formatDay(tx.localTime())} " +
                                     "${com.autobook.app.util.formatCategory(tx.category)} " +
                                     "${if (tx.type == Transaction.TYPE_EXPENSE) "-" else "+"}" +
                                     "${com.autobook.app.util.formatAmount(tx.amount)} ${tx.merchant}"

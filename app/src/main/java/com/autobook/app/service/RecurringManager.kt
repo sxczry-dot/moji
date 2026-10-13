@@ -51,6 +51,7 @@ object RecurringManager {
             }
             val key = AppSettings.recurringKey(rule)
             if (AppSettings.isRecurringDone(context, key, year, periodKey)) continue
+            val ts = ruleTimestamp(cal, rule, calDay, now)
             repo.add(
                 Transaction(
                     amount = rule.amount,
@@ -58,7 +59,8 @@ object RecurringManager {
                     category = rule.category,
                     merchant = rule.merchant.ifEmpty { rule.name },
                     source = Transaction.SOURCE_RECURRING,
-                    timestamp = ruleTimestamp(cal, rule, calDay, now),
+                    timestamp = ts,
+                    localTimestamp = ts,
                     book = rule.book
                 )
             )

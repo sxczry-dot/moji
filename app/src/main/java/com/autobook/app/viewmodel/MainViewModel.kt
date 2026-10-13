@@ -176,6 +176,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     merchant = merchant.ifEmpty { Transaction.MERCHANT_FALLBACK },
                     source = source,
                     timestamp = timestamp,
+                    localTimestamp = timestamp,
                     tags = tags.trim(),
                     book = book ?: _currentBook.value,
                     refNo = refNo
