@@ -71,7 +71,9 @@ object SmsParser {
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
     private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
-    private val balanceRegex = Regex("""余额\s*(?:为|：|:)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?)(?:\s*元)?""")
+    private val balanceRegex = Regex(
+        """余额\s*(?:为|：|:)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?=[^\d.]|$)(?:\s*元)?"""
+    )
 
     fun extractBalance(text: String): Double =
         balanceRegex.find(text)?.groupValues?.get(1)?.replace(",", "")?.toDoubleOrNull() ?: 0.0

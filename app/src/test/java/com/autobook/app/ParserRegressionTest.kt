@@ -365,6 +365,28 @@ class ParserRegressionTest {
     }
 
     @Test
+    fun `农行向人名完成支付宝交易记支出`() {
+        val r = SmsParser.parse(
+            "95599",
+            "【中国农业银行】您尾号3174账户10月14日19:54向李冰完成支付宝交易人民币-153.81，余额1477.64，详见掌银。"
+        )
+        assertEquals(153.81, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+        assertEquals("李冰", r.merchant)
+        assertEquals(1477.64, r.balance, 0.001)
+    }
+
+    @Test
+    fun `农行向人名交易长号码通道也可识别`() {
+        val r = SmsParser.parse(
+            "106909559900",
+            "【中国农业银行】您尾号3174账户10月14日19:54向李冰完成支付宝交易人民币-153.81，余额1477.64，详见掌银。"
+        )
+        assertEquals(153.81, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
     fun `退款识别纯函数`() {
         val saver = com.autobook.app.service.TransactionSaver
         assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "退款人民币50.00元已到账", ""))

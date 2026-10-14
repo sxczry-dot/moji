@@ -1360,7 +1360,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.96\n" +
+                                        "应用版本：4.97\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1377,7 +1377,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.96",
+            text = "默记 v4.97",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1807,6 +1807,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         )
     }
 }
+
 
 
 
