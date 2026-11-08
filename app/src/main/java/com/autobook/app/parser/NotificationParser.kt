@@ -17,6 +17,7 @@ object NotificationParser {
 
     private val merchantPatterns = listOf(
         Regex("""^(.{2,20}?)于.{0,16}?向您"""),
+        Regex("""在[（(]?([^）)]{1,20})[）)]?发生"""),
         Regex("""(?:商家|商户|收款方)[：:]\s*([^，,。;；\s]{1,20})"""),
         Regex("""在(.{2,20}?)(?:支付|付款|消费|购买)"""),
         Regex("""向(.{1,20}?)(?:完成|支付|消费|购买)"""),
@@ -136,13 +137,35 @@ object NotificationParser {
 
     private val merchantStopWords = setOf("已", "您", "我", "本", "该", "成功", "一笔", "在线")
 
+    /** 商户名清洗：优先取括号内容（"(美团)发生快捷"→美团），再剥引导词（"你已向美团外卖"→美团外卖） */
+    private fun cleanMerchant(raw: String): String {
+        val bracketed = Regex("""[（(]([^）)]{1,20})[）)]""").find(raw)
+        if (bracketed != null) {
+            val inner = bracketed.groupValues[1].trim()
+            if (inner.length >= 2 && !isAccountPlaceholder(inner) &&
+                !isDateLike(inner) && inner !in merchantStopWords
+            ) {
+                return inner
+            }
+        }
+        val stripped = raw
+            .replace(Regex("""^[你我已向在之于的为]+"""), "")
+            .replace(Regex("""(发生|快捷|交易|付款|收款|支付)$"""), "")
+            .trim()
+        return if (stripped.length >= 2 && !isAccountPlaceholder(stripped) &&
+            !isDateLike(stripped) && stripped !in merchantStopWords
+        ) {
+            stripped
+        } else {
+            ""
+        }
+    }
+
     private fun extractMerchantFromText(text: String): String {
         for (p in merchantPatterns) {
             val m = p.find(text) ?: continue
-            val name = m.groupValues[1].trim()
-            if (name.length >= 2 && !isAccountPlaceholder(name) &&
-                !isDateLike(name) && name !in merchantStopWords
-            ) return name
+            val cleaned = cleanMerchant(m.groupValues[1].trim())
+            if (cleaned.isNotEmpty()) return cleaned
         }
         return ""
     }
@@ -179,10 +202,8 @@ object NotificationParser {
         // 通用标题（交易提醒/动账通知等）或空标题：从正文提取商户
         for (p in textMerchantPatterns) {
             val m = p.find(text) ?: continue
-            val name = m.groupValues[1].trim()
-            if (name.length >= 2 && !isAccountPlaceholder(name) &&
-                !isDateLike(name) && name !in merchantStopWords
-            ) return name
+            val cleaned = cleanMerchant(m.groupValues[1].trim())
+            if (cleaned.isNotEmpty()) return cleaned
         }
         return ""
     }

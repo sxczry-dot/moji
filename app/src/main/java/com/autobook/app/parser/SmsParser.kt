@@ -30,6 +30,7 @@ object SmsParser {
 
     private val merchantPatterns = listOf(
         Regex("""^(.{2,20}?)于.{0,16}?向您"""),
+        Regex("""在[（(]?([^）)]{1,20})[）)]?发生"""),
         Regex("""在(.{1,20}?)(?:支付|消费|购买|缴纳)"""),
         Regex("""向(.{1,20}?)(?:完成|支付|消费|购买)"""),
         Regex("""(?:商户|商家)[：:]\s*(.{1,20})"""),
@@ -108,11 +109,31 @@ object SmsParser {
     private fun isDateLike(name: String): Boolean =
         name.count { it.isDigit() } >= 3
 
+    /** 商户名清洗：优先取括号内容（"（京东商城）"→京东商城），再剥引导词与杂质 */
+    private fun cleanMerchantName(raw: String): String {
+        val bracketed = Regex("""[（(]([^）)]{1,20})[）)]""").find(raw)
+        if (bracketed != null) {
+            val inner = bracketed.groupValues[1].trim()
+            if (inner.length >= 2 && !isAccountPlaceholder(inner) && !isDateLike(inner)) {
+                return inner
+            }
+        }
+        var name = raw.replace(bracketRegex, "").trim()
+        name = name.replace(Regex("""^[你我已向在之于的为]+"""), "")
+        name = name.replace(Regex("""(发生|快捷|交易|付款|收款|支付)$"""), "")
+            .trim()
+        return if (name.length >= 2 && !isAccountPlaceholder(name) && !isDateLike(name)) {
+            name
+        } else {
+            ""
+        }
+    }
+
     private fun extractMerchant(body: String): String {
         for (p in merchantPatterns) {
             val m = p.find(body) ?: continue
-            val name = m.groupValues[1].replace(bracketRegex, "").trim()
-            if (name.isNotEmpty() && !isAccountPlaceholder(name) && !isDateLike(name)) return name
+            val cleaned = cleanMerchantName(m.groupValues[1].trim())
+            if (cleaned.isNotEmpty()) return cleaned
         }
         return ""
     }
