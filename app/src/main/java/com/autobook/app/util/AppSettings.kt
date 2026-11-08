@@ -66,7 +66,8 @@ object AppSettings {
                 is Boolean -> json.put(k, v)
                 is Int -> json.put(k, v)
                 is Long -> json.put(k, v)
-                is Float -> json.put(k, v)
+                // Android 8-14 的 org.json 不支持 Float 类型，必须转 Double
+                is Float -> json.put(k, v.toDouble())
             }
         }
         return json.toString()
@@ -130,6 +131,13 @@ object AppSettings {
         val set = getStarredIds(context).toMutableSet()
         if (!set.add(id)) set.remove(id)
         prefs(context).edit().putString(KEY_STARRED, set.joinToString(",")).apply()
+    }
+
+    fun removeStar(context: Context, id: Long) {
+        val set = getStarredIds(context).toMutableSet()
+        if (set.remove(id)) {
+            prefs(context).edit().putString(KEY_STARRED, set.joinToString(",")).apply()
+        }
     }
 
     fun getSearchHistory(context: Context): List<String> {
@@ -336,24 +344,46 @@ object AppSettings {
     }
 
     fun addBook(context: Context, name: String) {
-        val books = getBooks(context).toMutableSet().apply { add(name) }
+        // 账本列表按逗号拼接存储，名称必须剔除逗号（否则列表分裂、规则失效）
+        val clean = name.replace(",", "").trim()
+        if (clean.isBlank()) return
+        val books = getBooks(context).toMutableSet().apply { add(clean) }
         prefs(context).edit()
             .putString(KEY_BOOKS, books.filter { it != DEFAULT_BOOK }.joinToString(","))
             .apply()
     }
 
+    /** 账本重命名/删除时同步搬运周期完成标记（done-key 含账本名），避免当周期重复入账 */
+    private fun migrateRecurringDoneMarks(context: Context, oldBook: String, newBook: String) {
+        if (oldBook == newBook) return
+        val p = prefs(context)
+        val editor = p.edit()
+        p.all.keys.filter { it.startsWith(KEY_RECURRING_DONE_PREFIX) }.forEach { k ->
+            val body = k.removePrefix(KEY_RECURRING_DONE_PREFIX)
+            if (body.endsWith("_$oldBook")) {
+                val newBody = body.removeSuffix("_$oldBook") + "_$newBook"
+                editor.putBoolean(KEY_RECURRING_DONE_PREFIX + newBody, p.getBoolean(k, false))
+                editor.remove(k)
+            }
+        }
+        editor.apply()
+    }
+
     fun renameBook(context: Context, oldName: String, newName: String) {
         if (oldName == DEFAULT_BOOK || newName.isBlank() || newName == oldName) return
-        val books = getBooks(context).map { if (it == oldName) newName else it }
+        val clean = newName.replace(",", "").trim()
+        if (clean.isBlank()) return
+        val books = getBooks(context).map { if (it == oldName) clean else it }
         prefs(context).edit()
             .putString(KEY_BOOKS, books.filter { it != DEFAULT_BOOK }.joinToString(","))
             .apply()
-        if (getCurrentBook(context) == oldName) setCurrentBook(context, newName)
+        if (getCurrentBook(context) == oldName) setCurrentBook(context, clean)
         // 周期规则同步迁移账本（否则规则继续向旧账本名写记录，成为幽灵账本）
         val rules = getRecurringRules(context)
         if (rules.any { it.book == oldName }) {
-            saveRecurringRules(context, rules.map { if (it.book == oldName) it.copy(book = newName) else it })
+            saveRecurringRules(context, rules.map { if (it.book == oldName) it.copy(book = clean) else it })
         }
+        migrateRecurringDoneMarks(context, oldName, clean)
     }
 
     fun removeBook(context: Context, name: String) {
@@ -371,6 +401,7 @@ object AppSettings {
                 rules.map { if (it.book == name) it.copy(book = DEFAULT_BOOK) else it }
             )
         }
+        migrateRecurringDoneMarks(context, name, DEFAULT_BOOK)
     }
 
     fun getCurrentBook(context: Context): String {
@@ -453,7 +484,14 @@ object AppSettings {
         val rules: List<RecurringRule> = if (saved.trimStart().startsWith("[")) {
             try {
                 val arr = org.json.JSONArray(saved)
-                (0 until arr.length()).mapNotNull { RecurringRule.decode(arr.getString(it)) }
+                // 逐条容错：单条坏数据只丢单条，不让全部周期规则失效
+                (0 until arr.length()).mapNotNull { i ->
+                    try {
+                        RecurringRule.decode(arr.getString(i))
+                    } catch (_: Exception) {
+                        null
+                    }
+                }
             } catch (_: Exception) {
                 emptyList()
             }
@@ -523,12 +561,18 @@ object AppSettings {
         return try {
             val arr = org.json.JSONArray(saved)
             (0 until arr.length()).mapNotNull { i ->
-                val o = arr.getJSONObject(i)
-                com.autobook.app.util.BillDueParser.BillDue(
-                    amount = o.optDouble("amount", 0.0),
-                    minPayment = o.optDouble("min", 0.0),
-                    dueDate = java.time.LocalDate.parse(o.optString("due", ""))
-                )
+                // 逐条容错：单条坏数据只丢单条，不让全部还款提醒失效
+                try {
+                    val o = arr.getJSONObject(i)
+                    com.autobook.app.util.BillDueParser.BillDue(
+                        amount = o.optDouble("amount", 0.0),
+                        minPayment = o.optDouble("min", 0.0),
+                        dueDate = java.time.LocalDate.parse(o.optString("due", "")),
+                        cardTail = o.optString("card", "")
+                    )
+                } catch (_: Exception) {
+                    null
+                }
             }
         } catch (_: Exception) {
             emptyList()
@@ -536,7 +580,10 @@ object AppSettings {
     }
 
     fun upsertBillDue(context: Context, due: com.autobook.app.util.BillDueParser.BillDue) {
-        val list = getBillDues(context).filter { it.dueDate != due.dueDate }.toMutableList()
+        // 以 还款日+卡尾号 为唯一键：两张卡同日还款互不覆盖
+        val list = getBillDues(context)
+            .filter { !(it.dueDate == due.dueDate && it.cardTail == due.cardTail) }
+            .toMutableList()
         list.add(due)
         saveBillDues(context, list)
     }
@@ -549,15 +596,18 @@ object AppSettings {
                     put("amount", d.amount)
                     put("min", d.minPayment)
                     put("due", d.dueDate.toString())
+                    put("card", d.cardTail)
                 }
             )
         }
         prefs(context).edit().putString(KEY_BILL_DUES, arr.toString()).apply()
     }
 
-    /** 还款入账后核销对应账单（金额匹配±0.02） */
+    /** 还款入账后核销对应账单：金额匹配±0.02；账单缺"应还款"（amount=0）时任何还款都核销 */
     fun clearBillDuesMatching(context: Context, amount: Double) {
-        val list = getBillDues(context).filter { kotlin.math.abs(it.amount - amount) >= 0.02 }
+        val list = getBillDues(context).filter {
+            it.amount > 0 && kotlin.math.abs(it.amount - amount) >= 0.02
+        }
         saveBillDues(context, list)
     }
 
@@ -588,16 +638,21 @@ object AppSettings {
         return try {
             val arr = org.json.JSONArray(saved)
             (0 until arr.length()).mapNotNull { i ->
-                val o = arr.getJSONObject(i)
-                SavedFilter(
-                    name = o.optString("name", ""),
-                    category = o.optString("cat", "").ifBlank { null },
-                    min = o.optDouble("min", Double.NaN).takeIf { !it.isNaN() },
-                    max = o.optDouble("max", Double.NaN).takeIf { !it.isNaN() },
-                    fromMonth = o.optString("from", "").ifBlank { null },
-                    toMonth = o.optString("to", "").ifBlank { null },
-                    starOnly = o.optBoolean("star", false)
-                ).takeIf { it.name.isNotBlank() }
+                // 逐条容错：单条坏数据只丢单条，不让全部筛选器失效
+                try {
+                    val o = arr.getJSONObject(i)
+                    SavedFilter(
+                        name = o.optString("name", ""),
+                        category = o.optString("cat", "").ifBlank { null },
+                        min = o.optDouble("min", Double.NaN).takeIf { !it.isNaN() },
+                        max = o.optDouble("max", Double.NaN).takeIf { !it.isNaN() },
+                        fromMonth = o.optString("from", "").ifBlank { null },
+                        toMonth = o.optString("to", "").ifBlank { null },
+                        starOnly = o.optBoolean("star", false)
+                    ).takeIf { it.name.isNotBlank() }
+                } catch (_: Exception) {
+                    null
+                }
             }
         } catch (_: Exception) {
             emptyList()

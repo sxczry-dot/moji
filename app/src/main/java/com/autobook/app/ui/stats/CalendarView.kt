@@ -56,8 +56,9 @@ fun CalendarMonthView(
     yearMode: Boolean = false,
     hideAmount: Boolean = false
 ) {
-    var selectedDay by remember { mutableStateOf<Int?>(null) }
-    var selectedMonth by remember { mutableStateOf<Int?>(null) }
+    // 年份/模式切换后重置选中状态，避免弹窗按旧日期过滤展示错误数据
+    var selectedDay by remember(yearMonth, yearMode) { mutableStateOf<Int?>(null) }
+    var selectedMonth by remember(yearMonth, yearMode) { mutableStateOf<Int?>(null) }
 
     if (yearMode) {
         val monthGrids = remember(txs) {

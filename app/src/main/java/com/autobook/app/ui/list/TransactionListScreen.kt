@@ -195,13 +195,19 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
         starOnly
     ).count { it }
     val searching = searchText.isNotBlank() || hasFilter
-    val searchResults = if (searching) {
-        remember(
-            allTxs, currentBook, searchText, filterCategory, filterMin, filterMax,
-            filterFromMonth, filterToMonth, sortMode, starOnly, starredIds
-        ) {
-            val min = filterMin.toDoubleOrNull()
-            val max = filterMax.toDoubleOrNull()
+    // 搜索/筛选全量过滤+排序移到后台线程，避免每敲一字在主线程全表扫描
+    var searchResults by remember { mutableStateOf(emptyList<Transaction>()) }
+    androidx.compose.runtime.LaunchedEffect(
+        allTxs, currentBook, searchText, filterCategory, filterMin, filterMax,
+        filterFromMonth, filterToMonth, sortMode, starOnly, starredIds
+    ) {
+        if (!searching) {
+            searchResults = emptyList()
+            return@LaunchedEffect
+        }
+        val min = filterMin.toDoubleOrNull()
+        val max = filterMax.toDoubleOrNull()
+        searchResults = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
             allTxs.filter { tx ->
                 // 搜索/筛选只作用于当前账本，避免其他账本记录混入并可被误删
                 val bookMatch = tx.book == currentBook
@@ -228,8 +234,6 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                 }
             }
         }
-    } else {
-        emptyList()
     }
 
     val listState = rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
@@ -243,13 +247,6 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
     }
     val amountSortedMonthTxs = remember(monthTxs) {
         monthTxs.sortedByDescending { it.amount }
-    }
-    val allUsedTags = remember(allTxs) {
-        allTxs.flatMap { it.tags.split(Regex("\\s+")) }
-            .filter { it.isNotBlank() }
-            .groupingBy { it }.eachCount()
-            .entries.sortedByDescending { it.value }.map { it.key }
-            .take(15)
     }
 
     val listAlpha = remember { androidx.compose.animation.core.Animatable(1f) }
@@ -710,6 +707,47 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                         )
                     }
                 } else if (sortMode == 2) {
+                    item(key = "amount_month_nav") {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "按金额排序",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    )
+                                    .clickable {
+                                        switchToBottom = false
+                                        viewModel.previousMonth()
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 3.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = "上月",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(amountSortedMonthTxs, key = { it.id }) { tx ->
                         SwipeableTransactionRow(
                             tx, hideAmount = hideAmount,
@@ -950,14 +988,19 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                 tx = deletedTx,
                 onUndo = {
                     deletedTx?.let { tx ->
-                        // 携带账本/来源/单号重建，撤销后记录归属与来源不被改写
+                        // 携带账本/来源/单号/余额重建，撤销后记录归属与来源不被改写；星标按新 id 迁移
                         viewModel.addManual(
                             tx.amount, tx.type, tx.category,
                             tx.merchant, tx.tags, tx.timestamp,
                             book = tx.book,
                             source = tx.source.ifEmpty { com.autobook.app.data.Transaction.SOURCE_MANUAL },
-                            refNo = tx.refNo
+                            refNo = tx.refNo,
+                            balanceAfter = tx.balanceAfter,
+                            starOnInsert = tx.id in starredIds
                         )
+                        if (tx.id in starredIds) {
+                            com.autobook.app.util.AppSettings.removeStar(listContext, tx.id)
+                        }
                     }
                     deletedTx = null
                 },
@@ -1220,6 +1263,7 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                         filterMax = ""
                         filterFromMonth = null
                         filterToMonth = null
+                        starOnly = false
                         showFilter = false
                     }
                 ) { Text("清除筛选") }

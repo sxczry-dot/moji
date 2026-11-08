@@ -24,9 +24,9 @@ class TransactionRepository(context: Context) {
     suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction> =
         dao.getByRangeOnce(book, start, end)
 
-    suspend fun add(tx: Transaction) {
+    suspend fun add(tx: Transaction): Long {
         // 补到达时间：让手动/周期记录参与自动记账的去重候选池，避免与通知重复记账
-        dao.insert(
+        return dao.insert(
             tx.copy(
                 insertedAt = System.currentTimeMillis(),
                 localTimestamp = if (tx.localTimestamp > 0) tx.localTimestamp else tx.timestamp

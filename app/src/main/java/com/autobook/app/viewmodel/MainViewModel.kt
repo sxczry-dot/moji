@@ -49,8 +49,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val _openTabRequest = MutableStateFlow(-1)
     val openTabRequest: StateFlow<Int> = _openTabRequest
 
-    private val _quickAddRequest = MutableStateFlow(0)
-    val quickAddRequest: StateFlow<Int> = _quickAddRequest
+    private val _quickAddRequest = MutableStateFlow(0L)
+    val quickAddRequest: StateFlow<Long> = _quickAddRequest
 
     private val _editRequest = MutableStateFlow(-1L)
     val editRequest: StateFlow<Long> = _editRequest
@@ -64,11 +64,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun postQuickAdd() {
-        _quickAddRequest.value++
+        // 唯一 token：连点两次也必须触发两次（旧计数语义会被合并）
+        _quickAddRequest.value = System.nanoTime()
     }
 
     fun consumeQuickAdd() {
-        _quickAddRequest.value = 0
+        _quickAddRequest.value = 0L
     }
 
     fun postEdit(id: Long) {
@@ -162,13 +163,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         timestamp: Long = System.currentTimeMillis(),
         book: String? = null,
         source: String = Transaction.SOURCE_MANUAL,
-        refNo: String = ""
+        refNo: String = "",
+        balanceAfter: Double = 0.0,
+        starOnInsert: Boolean = false
     ) {
         if (merchant.isNotBlank()) {
             AppSettings.learnCategory(getApplication(), merchant, com.autobook.app.data.Categories.primaryOf(category))
         }
         viewModelScope.launch(Dispatchers.IO) {
-            repo.add(
+            val newId = repo.add(
                 Transaction(
                     amount = amount,
                     type = type,
@@ -179,9 +182,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     localTimestamp = timestamp,
                     tags = tags.trim(),
                     book = book ?: _currentBook.value,
-                    refNo = refNo
+                    refNo = refNo,
+                    balanceAfter = balanceAfter
                 )
             )
+            // 撤销删除重建：星标按新 id 迁移
+            if (starOnInsert && newId > 0) {
+                AppSettings.toggleStar(getApplication(), newId)
+            }
             MonthSync.refreshCurrentMonth(getApplication(), _currentBook.value)
         }
     }
@@ -189,6 +197,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun delete(tx: Transaction) {
         viewModelScope.launch(Dispatchers.IO) {
             repo.remove(tx)
+            // 删除后清理星标，避免幽灵星标在"只看星标"筛选下指向不存在的记录
+            com.autobook.app.util.AppSettings.removeStar(getApplication(), tx.id)
             MonthSync.refreshCurrentMonth(getApplication(), _currentBook.value)
         }
     }
@@ -211,9 +221,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     amount = amount,
                     type = type,
                     category = category,
-                    merchant = merchant.ifEmpty { tx.source.ifEmpty { Transaction.MERCHANT_FALLBACK } },
+                    merchant = merchant.ifEmpty { Transaction.MERCHANT_FALLBACK },
                     tags = tags.trim(),
                     timestamp = timestamp,
+                    localTimestamp = timestamp, // 编辑时间必须同步墙钟时间，否则跨月修改不生效
                     book = book ?: tx.book
                 )
             )

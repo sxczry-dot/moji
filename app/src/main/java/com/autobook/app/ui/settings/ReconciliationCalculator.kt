@@ -23,10 +23,15 @@ object ReconciliationCalculator {
     )
 
     fun analyze(txs: List<Transaction>): List<Mismatch> {
+        // 快照：每自然日取当天最后一条带余额的记录（保存快照时间戳作为窗口边界）
+        data class Snap(val day: LocalDate, val balance: Double, val ts: Long)
         val snapshots = txs
             .filter { it.balanceAfter > 0 }
             .groupBy { toDate(it.localTime()) }
-            .mapValues { (_, list) -> list.maxByOrNull { it.localTime() }!!.balanceAfter }
+            .mapValues { (_, list) ->
+                val last = list.maxByOrNull { it.localTime() }!!
+                Snap(toDate(last.localTime()), last.balanceAfter, last.localTime())
+            }
         if (snapshots.size < 2) return emptyList()
 
         val days = snapshots.keys.sorted()
@@ -34,15 +39,17 @@ object ReconciliationCalculator {
         for (i in 1 until days.size) {
             val prevDay = days[i - 1]
             val day = days[i]
-            // 两次快照之间的全部流水（前日快照之后到本日快照当天，含当天）
+            val prevSnap = snapshots[prevDay]!!
+            val daySnap = snapshots[day]!!
+            // 以两次快照时间戳为界（而非自然日截断）：前日快照之后的流水到本日快照为止，
+            // 避免"快照后又消费/快照前的跨日流水"被算错窗口
             val dayTxs = txs.filter {
-                val d = toDate(it.localTime())
-                d.isAfter(prevDay) && !d.isAfter(day)
+                it.localTime() > prevSnap.ts && it.localTime() <= daySnap.ts
             }
             val expense = dayTxs.filter { it.type == Transaction.TYPE_EXPENSE }.sumOf { it.amount }
             val income = dayTxs.filter { it.type == Transaction.TYPE_INCOME }.sumOf { it.amount }
-            val expected = snapshots[prevDay]!! - expense + income
-            val actual = snapshots[day]!!
+            val expected = prevSnap.balance - expense + income
+            val actual = daySnap.balance
             if (abs(expected - actual) > 0.05) {
                 result += Mismatch(day, expected, actual, expected - actual)
             }

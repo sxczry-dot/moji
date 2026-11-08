@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.EventRepeat
@@ -73,7 +75,7 @@ fun RecurringDialog(onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         title = { Text("周期记账") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 if (candidates.isNotEmpty()) {
                     TextButton(onClick = { showCandidates = true }) {
                         Text("✨ 发现 ${candidates.size} 个疑似周期支出，可一键添加")
@@ -207,7 +209,7 @@ fun RecurringDialog(onDismiss: () -> Unit) {
             onDismissRequest = { showCandidates = false },
             title = { Text("疑似周期支出") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                     Text(
                         text = "同商户、同金额、间隔稳定出现的支出，可能是订阅/水电/会员，可一键转周期规则。",
                         style = MaterialTheme.typography.labelSmall,
@@ -242,7 +244,12 @@ fun RecurringDialog(onDismiss: () -> Unit) {
                                         amount = c.amount,
                                         type = Transaction.TYPE_EXPENSE,
                                         category = c.category,
-                                        day = if (c.intervalDays <= 8) c.lastDayOfWeek else c.lastDayOfMonth,
+                                        day = if (c.intervalDays <= 8) {
+                                            c.lastDayOfWeek
+                                        } else {
+                                            // 月规则钳制到 28 以内（引擎也会在短月钳到月末，双保险）
+                                            minOf(c.lastDayOfMonth, 28)
+                                        },
                                         merchant = c.merchant,
                                         period = if (c.intervalDays <= 8) 1 else 0,
                                         book = c.book
@@ -343,7 +350,7 @@ private fun AddRecurringRuleDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial == null) "添加周期规则" else "编辑周期规则") },
         text = {
-            Column {
+            Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -419,7 +426,11 @@ private fun AddRecurringRuleDialog(
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
                     SegmentedButton(
                         selected = type == Transaction.TYPE_EXPENSE,
-                        onClick = { type = Transaction.TYPE_EXPENSE },
+                        onClick = {
+                            type = Transaction.TYPE_EXPENSE
+                            // 收入切回支出时，若分类仍是"收入"则重置，避免保存出 type=支出/category=收入 的怪规则
+                            if (category == Categories.INCOME) category = Categories.FOOD
+                        },
                         shape = SegmentedButtonDefaults.itemShape(0, 2)
                     ) { Text("支出") }
                     SegmentedButton(

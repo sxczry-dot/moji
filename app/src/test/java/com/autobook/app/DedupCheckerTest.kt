@@ -67,6 +67,29 @@ class DedupCheckerTest {
     }
 
     @Test
+    fun `双方具体商户名不同1分钟内判重`() {
+        // 公司全称 vs 品牌名（起点读书案）：1 分钟内判重
+        val sms = tx(source = "短信", merchant = "上海玄霆娱乐信息科技有限公司", timestamp = t0)
+        val notif = tx(source = "支付宝", merchant = "起点读书", timestamp = t0 + 30_000)
+        assertTrue(DedupChecker.isDuplicateOf(sms, notif))
+    }
+
+    @Test
+    fun `双方具体商户名不同超过1分钟不判重`() {
+        val sms = tx(source = "短信", merchant = "上海玄霆娱乐信息科技有限公司", timestamp = t0)
+        val notif = tx(source = "支付宝", merchant = "起点读书", timestamp = t0 + 90_000)
+        assertFalse(DedupChecker.isDuplicateOf(sms, notif))
+    }
+
+    @Test
+    fun `流水号相同但方向不同不判重`() {
+        // 退款收入与消费支出同单号（尾6位碰撞）不能被吞
+        val a = tx(source = "微信", type = Transaction.TYPE_EXPENSE, timestamp = t0, refNo = "345678")
+        val b = tx(source = "微信", type = Transaction.TYPE_INCOME, timestamp = t0 + 30_000, refNo = "345678")
+        assertFalse(DedupChecker.isDuplicateOf(a, b))
+    }
+
+    @Test
     fun `两笔真实同额消费不误判`() {
         val first = tx(source = "微信", timestamp = t0)
         val second = tx(source = "微信", timestamp = t0 + 4 * 60_000)

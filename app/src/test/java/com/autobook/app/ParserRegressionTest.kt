@@ -387,6 +387,67 @@ class ParserRegressionTest {
     }
 
     @Test
+    fun `余额在前不抢交易金额`() {
+        val r = SmsParser.parse(
+            "95599",
+            "【中国农业银行】您尾号3174账户余额人民币500.00元，支出45.00元。"
+        )
+        assertEquals(45.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+        assertEquals(500.0, r.balance, 0.001)
+    }
+
+    @Test
+    fun `账单应还款短信不记假支出`() {
+        val r = SmsParser.parse(
+            "95599",
+            "【中国农业银行】您尾号3174信用卡本期应还款人民币500.00元，最低还款50.00元，最后还款日8月23日。"
+        )
+        assertNull(r)
+    }
+
+    @Test
+    fun `向你转账通知记收入`() {
+        val r = NotificationParser.parse(
+            NotificationParser.WECHAT_PKG,
+            "微信支付",
+            "张三向你转账500.00元"
+        )
+        assertEquals(500.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, r.type)
+    }
+
+    @Test
+    fun `于时分时间格式解析`() {
+        val reference = java.time.LocalDateTime.of(2026, 11, 8, 20, 30)
+            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val t = com.autobook.app.util.TradeTimeParser.parse("您尾号3174账户于09:23消费25元", reference)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = t }
+        assertEquals(9, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(23, cal.get(java.util.Calendar.MINUTE))
+    }
+
+    @Test
+    fun `时xx分格式解析`() {
+        val reference = java.time.LocalDateTime.of(2026, 11, 8, 20, 30)
+            .atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+        val t = com.autobook.app.util.TradeTimeParser.parse("19时52分消费", reference)
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = t }
+        assertEquals(19, cal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(52, cal.get(java.util.Calendar.MINUTE))
+    }
+
+    @Test
+    fun `于日期串不当作商户名`() {
+        val r = SmsParser.parse(
+            "95599",
+            "【中国农业银行】您尾号3174账户于11月08日19:52消费人民币25.00元。"
+        )
+        assertEquals(25.0, r!!.amount, 0.001)
+        assertTrue(r.merchant.isBlank() || !r.merchant.contains("11月"))
+    }
+
+    @Test
     fun `退款识别纯函数`() {
         val saver = com.autobook.app.service.TransactionSaver
         assertTrue(saver.isRefundTransaction(Transaction.TYPE_INCOME, "退款人民币50.00元已到账", ""))

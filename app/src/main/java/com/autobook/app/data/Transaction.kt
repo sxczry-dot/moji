@@ -8,7 +8,8 @@ import androidx.room.PrimaryKey
     indices = [
         androidx.room.Index("timestamp"),
         androidx.room.Index("book", "timestamp"),
-        androidx.room.Index("book", "localTimestamp")
+        androidx.room.Index("book", "localTimestamp"),
+        androidx.room.Index("insertedAt")
     ]
 )
 data class Transaction(

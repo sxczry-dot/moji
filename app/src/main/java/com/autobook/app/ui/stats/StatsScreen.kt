@@ -322,13 +322,15 @@ Row(verticalAlignment = Alignment.CenterVertically) {
         }
 
         item {
-            val lastYearRange = com.autobook.app.util.TimeUtils.monthRange(
-                currentMonth.year - 1, currentMonth.monthValue - 1
-            )
-            val lastYearExpense = allTxs.filter {
-                it.localTime() in lastYearRange.first until lastYearRange.second &&
-                    it.book == currentBook
-            }.expenseSum()
+            val lastYearExpense = remember(allTxs, currentBook, currentMonth) {
+                val lastYearRange = com.autobook.app.util.TimeUtils.monthRange(
+                    currentMonth.year - 1, currentMonth.monthValue - 1
+                )
+                allTxs.filter {
+                    it.localTime() in lastYearRange.first until lastYearRange.second &&
+                        it.book == currentBook
+                }.expenseSum()
+            }
             MonthCompareCard(
                 displayTxs, sixMonths, dataMode, currentMonth, lastYearExpense,
                 modifier = Modifier.animateItem(),
@@ -340,15 +342,17 @@ Row(verticalAlignment = Alignment.CenterVertically) {
             val expenseTxs = remember(displayTxs) {
                 displayTxs.filter { it.type == Transaction.TYPE_EXPENSE }
             }
-            val buckets = listOf(
-                "10元以下" to { a: Double -> a < 10 },
-                "10-50元" to { a: Double -> a >= 10 && a < 50 },
-                "50-100元" to { a: Double -> a >= 50 && a < 100 },
-                "100-500元" to { a: Double -> a >= 100 && a < 500 },
-                "500元以上" to { a: Double -> a >= 500 }
-            )
-            val bucketCounts = buckets.map { (label, pred) ->
-                label to expenseTxs.count { pred(it.amount) }
+            val bucketCounts = remember(expenseTxs) {
+                val buckets = listOf(
+                    "10元以下" to { a: Double -> a < 10 },
+                    "10-50元" to { a: Double -> a >= 10 && a < 50 },
+                    "50-100元" to { a: Double -> a >= 50 && a < 100 },
+                    "100-500元" to { a: Double -> a >= 100 && a < 500 },
+                    "500元以上" to { a: Double -> a >= 500 }
+                )
+                buckets.map { (label, pred) ->
+                    label to expenseTxs.count { pred(it.amount) }
+                }
             }
             val maxCount = (bucketCounts.maxOfOrNull { it.second } ?: 0).takeIf { it > 0 } ?: 1
             Card(
@@ -471,13 +475,15 @@ Row(verticalAlignment = Alignment.CenterVertically) {
                     )                    }
                     Spacer(Modifier.height(16.dp))
                     if (dataMode == 0) {
-                        val dailyExpense = displayTxs
-                            .filter { it.type == Transaction.TYPE_EXPENSE }
-                            .groupBy {
-                                java.time.Instant.ofEpochMilli(it.timestamp)
-                                    .atZone(java.time.ZoneId.systemDefault()).dayOfMonth
-                            }
-                            .mapValues { (_, list) -> list.sumOf { it.amount } }
+                        val dailyExpense = remember(displayTxs) {
+                            displayTxs
+                                .filter { it.type == Transaction.TYPE_EXPENSE }
+                                .groupBy {
+                                    java.time.Instant.ofEpochMilli(it.timestamp)
+                                        .atZone(java.time.ZoneId.systemDefault()).dayOfMonth
+                                }
+                                .mapValues { (_, list) -> list.sumOf { it.amount } }
+                        }
                         val days = currentMonth.lengthOfMonth()
                         BarChart(
                             values = (1..days).map { dailyExpense[it] ?: 0.0 },
@@ -494,14 +500,16 @@ Row(verticalAlignment = Alignment.CenterVertically) {
                             }
                         )
                     } else {
-                        val yearlyExpense = (1..12).map { m ->
-                            yearTxs
-                                .filter {
-                                    it.type == Transaction.TYPE_EXPENSE &&
-                                        java.time.Instant.ofEpochMilli(it.timestamp)
-                                            .atZone(java.time.ZoneId.systemDefault()).monthValue == m
-                                }
-                                .sumOf { it.amount }
+                        val yearlyExpense = remember(yearTxs) {
+                            (1..12).map { m ->
+                                yearTxs
+                                    .filter {
+                                        it.type == Transaction.TYPE_EXPENSE &&
+                                            java.time.Instant.ofEpochMilli(it.timestamp)
+                                                .atZone(java.time.ZoneId.systemDefault()).monthValue == m
+                                    }
+                                    .sumOf { it.amount }
+                            }
                         }
                         BarChart(
                             values = yearlyExpense,

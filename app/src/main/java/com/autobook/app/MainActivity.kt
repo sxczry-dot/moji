@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -89,14 +91,30 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
                         label = "onboarding_switch"
                     ) { done ->
                         if (done) {
-                            if (com.autobook.app.util.AppSettings.isAppLockEnabled(this@MainActivity) &&
-                                !lockUnlocked
-                            ) {
-                                com.autobook.app.ui.LockScreen(
-                                    onUnlocked = { lockUnlocked = true }
-                                )
-                            } else {
+                            // 锁屏用覆盖层而非替换分支：文件选择器等外部流程期间 MainScreen 组合保持存活，
+                            // ActivityResult 回调不会被销毁丢弃（修复"开锁后备份/导出静默失效"）
+                            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
                                 MainScreen()
+                                if (com.autobook.app.util.AppSettings.isAppLockEnabled(this@MainActivity) &&
+                                    !lockUnlocked
+                                ) {
+                                    androidx.compose.material3.Surface(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .clickable(
+                                                interactionSource = androidx.compose.runtime.remember {
+                                                    androidx.compose.foundation.interaction.MutableInteractionSource()
+                                                },
+                                                indication = null,
+                                                onClick = {}
+                                            ),
+                                        color = MaterialTheme.colorScheme.background
+                                    ) {
+                                        com.autobook.app.ui.LockScreen(
+                                            onUnlocked = { lockUnlocked = true }
+                                        )
+                                    }
+                                }
                             }
                         } else {
                             com.autobook.app.ui.OnboardingScreen(
@@ -124,15 +142,26 @@ class MainActivity : androidx.fragment.app.FragmentActivity() {
         intent.getIntExtra("open_tab", -1).let {
             if (it >= 0) viewModel.postOpenTab(it)
         }
+        // 消费后清掉 extras：恢复备份/清空数据引起的 recreate 不会重放这些一次性事件
+        intent.removeExtra("quick_add")
+        intent.removeExtra("edit_tx_id")
+        intent.removeExtra("open_tab")
         if (intent.action == "open_notification_settings") {
+            intent.action = null
             startActivity(
                 android.content.Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
                     .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
         when (intent.action) {
-            "com.autobook.app.action.QUICK_ADD" -> viewModel.postQuickAdd()
-            "com.autobook.app.action.OPEN_LIST" -> viewModel.postOpenTab(0)
+            "com.autobook.app.action.QUICK_ADD" -> {
+                viewModel.postQuickAdd()
+                intent.action = null
+            }
+            "com.autobook.app.action.OPEN_LIST" -> {
+                viewModel.postOpenTab(0)
+                intent.action = null
+            }
         }
     }
 }

@@ -55,4 +55,41 @@ class BillDueParserTest {
         assertTrue(BillDueParser.hasBillInfo("本期应还款100元"))
         assertTrue(BillDueParser.hasBillInfo("最低还款10元"))
     }
+
+    @Test
+    fun `无千分位金额不截断`() {
+        val due = BillDueParser.parse(
+            "【中国建设银行】您尾号1234信用卡本期应还款人民币1000.00元，最低还款100.00元，最后还款日9月5日。",
+            now
+        )
+        assertEquals(1000.0, due!!.amount, 0.001)
+        assertEquals(100.0, due.minPayment, 0.001)
+    }
+
+    @Test
+    fun `卡尾号提取`() {
+        val due = BillDueParser.parse(
+            "【中国农业银行】您尾号3174信用卡本期账单已出，最后还款日8月23日。",
+            now
+        )
+        assertEquals("3174", due!!.cardTail)
+    }
+
+    @Test
+    fun `1月收到12月账单视为上一年`() {
+        val due = BillDueParser.parse(
+            "您尾号1234信用卡最后还款日12月23日。",
+            LocalDate.of(2026, 1, 5)
+        )
+        assertEquals(LocalDate.of(2025, 12, 23), due!!.dueDate)
+    }
+
+    @Test
+    fun `非法日期钳制到月末不丢账单`() {
+        val due = BillDueParser.parse(
+            "您尾号1234信用卡最后还款日2月30日。",
+            LocalDate.of(2026, 3, 5)
+        )
+        assertEquals(LocalDate.of(2027, 2, 28), due!!.dueDate)
+    }
 }

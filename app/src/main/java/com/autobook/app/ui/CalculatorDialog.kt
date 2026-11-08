@@ -36,6 +36,8 @@ fun CalculatorDialog(
     onDismiss: () -> Unit
 ) {
     var expr by remember { mutableStateOf("") }
+    // "="后显示舍入值（内部仍保留全精度用于链式续算），避免 0.1+0.2=0.30000000000000004 超长显示
+    var justEvaluated by remember { mutableStateOf(false) }
 
     fun press(key: String) {
         when (key) {
@@ -44,11 +46,24 @@ fun CalculatorDialog(
                 if (result != null) {
                     // 保留全精度续算，避免 10÷3=→3.33→×3=→9.99 的链式误差
                     expr = result.toString()
+                    justEvaluated = true
                 }
             }
-            "C" -> expr = ""
-            else -> expr += key
+            "C" -> {
+                expr = ""
+                justEvaluated = false
+            }
+            else -> {
+                expr += key
+                justEvaluated = false
+            }
         }
+    }
+
+    val display = if (justEvaluated) {
+        evaluate(expr)?.let { formatResult(it) } ?: expr
+    } else {
+        expr.ifEmpty { "0" }
     }
 
     AlertDialog(
@@ -58,9 +73,11 @@ fun CalculatorDialog(
         text = {
             Column {
                 Text(
-                    text = expr.ifEmpty { "0" },
+                    text = display,
                     fontSize = 26.sp,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp)

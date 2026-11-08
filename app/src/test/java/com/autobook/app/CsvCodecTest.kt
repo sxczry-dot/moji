@@ -182,4 +182,41 @@ class CsvCodecTest {
         assertEquals(1, txs.size)
         assertEquals("我的账本", txs[0].book)
     }
+
+    @Test
+    fun `备份往返保留id`() {
+        val original = listOf(
+            Transaction(
+                id = 42L, amount = 25.5, type = Transaction.TYPE_EXPENSE, category = "餐饮美食",
+                merchant = "美团", source = "微信", timestamp = 1755916200123L
+            )
+        )
+        val decoded = CsvCodec.decode(CsvCodec.encode(original))
+        assertEquals(1, decoded.size)
+        assertEquals(42L, decoded[0].id)
+    }
+
+    @Test
+    fun `外部文件无id列时id为0`() {
+        val csv = "$sharkHeader\n\"2026年08月01日\",\"支出\",\"购物\",\"10\",\"x\"\n"
+        val txs = CsvCodec.decode(csv)
+        assertEquals(0L, txs[0].id)
+    }
+
+    @Test
+    fun `金额带元后缀可解析`() {
+        val csv = "金额,类型,分类,商户\n\"38.00元\",支出,购物,测试\n"
+        val txs = CsvCodec.decode(csv)
+        assertEquals(1, txs.size)
+        assertEquals(38.0, txs[0].amount, 0.001)
+    }
+
+    @Test
+    fun `纯收入金额列文件可导入`() {
+        val csv = "日期,收入金额\n2026-08-01,500\n"
+        val txs = CsvCodec.decode(csv)
+        assertEquals(1, txs.size)
+        assertEquals(500.0, txs[0].amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, txs[0].type)
+    }
 }

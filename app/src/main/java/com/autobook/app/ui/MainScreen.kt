@@ -130,11 +130,13 @@ fun MainScreen() {
                             )
                             Row(modifier = Modifier.fillMaxWidth()) {
                                 tabs.forEachIndexed { index, tab ->
-                                    val itemSelected = selected == index
-                                    val interactionSource = remember {
-                                        androidx.compose.foundation.interaction.MutableInteractionSource()
-                                    }
-                                    val pressed by interactionSource.collectIsPressedAsState()
+                                    // key() 隔离每项的 remember 槽位：所有 tab 共享同一 interactionSource 会导致按一个全部缩放
+                                    androidx.compose.runtime.key(tab.label) {
+                                        val itemSelected = selected == index
+                                        val interactionSource = remember {
+                                            androidx.compose.foundation.interaction.MutableInteractionSource()
+                                        }
+                                        val pressed by interactionSource.collectIsPressedAsState()
                                     Column(
                                         modifier = Modifier
                                             .weight(1f)
@@ -187,6 +189,7 @@ fun MainScreen() {
                                                 }
                                             )
                                         }
+                                    }
                                     }
                                 }
                             }

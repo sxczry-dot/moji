@@ -13,10 +13,10 @@ object BillReminder {
 
     private const val CHANNEL_ID = "bill_due"
 
-    private var nextId = 4001
-
     fun checkAndNotify(context: Context) {
         try {
+            // 无通知权限时不标记"已提醒"（下个 tick 重试），避免提醒被静默吞掉
+            if (!com.autobook.app.util.Permissions.isNotifGranted(context)) return
             val dues = AppSettings.getBillDues(context)
             if (dues.isEmpty()) return
             val today = java.time.LocalDate.now()
@@ -24,16 +24,18 @@ object BillReminder {
                 val days = java.time.temporal.ChronoUnit.DAYS.between(today, due.dueDate)
                 if (days < 0) continue
                 if (days.toInt() !in setOf(0, 1, 3)) continue
-                val key = "d${due.dueDate}_d$days"
+                val key = "d${due.dueDate}_${due.cardTail}_d$days"
                 if (AppSettings.isBillNotified(context, key)) continue
-                AppSettings.markBillNotified(context, key)
-                send(context, due, days)
+                if (send(context, due, days)) {
+                    AppSettings.markBillNotified(context, key)
+                }
             }
         } catch (_: Exception) {
         }
     }
 
-    private fun send(context: Context, due: BillDueParser.BillDue, days: Long) {
+    /** 发送成功返回 true 才允许落"已提醒"标记 */
+    private fun send(context: Context, due: BillDueParser.BillDue, days: Long): Boolean {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
                 as android.app.NotificationManager
         val channel = android.app.NotificationChannel(
@@ -59,9 +61,13 @@ object BillReminder {
             .setContentIntent(pending)
             .setAutoCancel(true)
             .build()
-        try {
-            androidx.core.app.NotificationManagerCompat.from(context).notify(nextId++, notification)
+        return try {
+            // 通知 id 由还款日+卡尾号派生：多路并发 tick 不会撞 id 互相覆盖
+            val notifyId = 4001 + (due.dueDate.toEpochDay() * 31 + due.cardTail.hashCode()).toInt() and 0xFFFF
+            androidx.core.app.NotificationManagerCompat.from(context).notify(notifyId, notification)
+            true
         } catch (_: SecurityException) {
+            false
         }
     }
 }

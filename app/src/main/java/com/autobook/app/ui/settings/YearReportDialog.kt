@@ -52,7 +52,8 @@ fun YearReportDialog(onDismiss: () -> Unit) {
     }
 
     val totalExpense = yearTxs.expenseSum()
-    val totalIncome = yearTxs.incomeSum()
+    // 收入统计剔除退款（退款在"全年退款"行单独展示，避免同一笔重复计入）
+    val totalIncome = yearTxs.incomeSum() - yearTxs.refundSum()
     val expenseCount = yearTxs.count { it.type == Transaction.TYPE_EXPENSE }
 
     val topCategory = yearTxs
@@ -76,7 +77,15 @@ fun YearReportDialog(onDismiss: () -> Unit) {
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
         onDismissRequest = onDismiss,
-        title = { Text("${reportYear}年度报告") },
+        title = {
+            Text(
+                if (currentBook == com.autobook.app.util.AppSettings.DEFAULT_BOOK) {
+                    "${reportYear}年度报告"
+                } else {
+                    "${reportYear}年度报告（账本：$currentBook）"
+                }
+            )
+        },
         text = {
             Column(
                 modifier = Modifier

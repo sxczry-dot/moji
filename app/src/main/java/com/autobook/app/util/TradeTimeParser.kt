@@ -4,9 +4,10 @@ import java.util.Calendar
 
 object TradeTimeParser {
 
-    // 支持格式：08月24日09:23、8月24日 09:23、09:23、08-24 09:23、08/24 09:23
+    // 支持格式：08月24日09:23、8月24日 09:23、于09:23、19时52分、08-24 09:23、08/24 09:23
     private val fullRegex = Regex("""(\d{1,2})[月\-/.](\d{1,2})[日]?[\s\-]*(\d{1,2})[:：](\d{1,2})""")
-    private val shortRegex = Regex("""(?:^|[\s，,（(])(\d{1,2})[:：](\d{1,2})(?:分)?(?=[\s，,）)：.]|$)""")
+    private val shortRegex = Regex("""(?:^|[\s，,（(于在])(\d{1,2})[:：](\d{1,2})(?:分)?(?=[^0-9:]|$)""")
+    private val hourMinuteRegex = Regex("""(?:^|[\s，,（(于在])(\d{1,2})[时点](\d{1,2})分?(?=[^0-9时分]|$)""")
 
     fun parse(text: String, reference: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = reference }
@@ -47,6 +48,25 @@ object TradeTimeParser {
         if (short != null) {
             val hour = short.groupValues[1].toIntOrNull() ?: return 0L
             val minute = short.groupValues[2].toIntOrNull() ?: return 0L
+            if (hour !in 0..23 || minute !in 0..59) return 0L
+            val result = Calendar.getInstance().apply {
+                timeInMillis = reference
+                set(Calendar.HOUR_OF_DAY, hour)
+                set(Calendar.MINUTE, minute)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            if (result.timeInMillis > reference + 60_000) {
+                result.add(Calendar.DAY_OF_YEAR, -1)
+            }
+            return result.timeInMillis
+        }
+
+        // "19时52分" / "19点52" 格式（视作当天）
+        val hm = hourMinuteRegex.find(text)
+        if (hm != null) {
+            val hour = hm.groupValues[1].toIntOrNull() ?: return 0L
+            val minute = hm.groupValues[2].toIntOrNull() ?: return 0L
             if (hour !in 0..23 || minute !in 0..59) return 0L
             val result = Calendar.getInstance().apply {
                 timeInMillis = reference

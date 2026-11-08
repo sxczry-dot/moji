@@ -74,8 +74,12 @@ object ServiceGuard {
 
 class GuardReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        // goAsync：异步写库期间进程可被回收前保持广播存活
+        val pending = goAsync()
         try {
-            if (ServiceGuard.isListenerEnabled(context)) {
+            if (ServiceGuard.isListenerEnabled(context) &&
+                !NotificationListenerService.isConnected
+            ) {
                 ServiceGuard.requestRebind(context)
             }
         } catch (_: Exception) {
@@ -86,6 +90,8 @@ class GuardReceiver : BroadcastReceiver() {
                 RecurringManager.checkAndRun(context)
                 BillReminder.checkAndNotify(context)
             } catch (_: Exception) {
+            } finally {
+                pending.finish()
             }
         }
     }
@@ -98,7 +104,10 @@ class GuardWorker(
 
     override fun doWork(): Result {
         return try {
-            if (ServiceGuard.isListenerEnabled(applicationContext)) {
+            // 仅监听断开时 requestRebind，健康连接不做无谓的解绑重连
+            if (ServiceGuard.isListenerEnabled(applicationContext) &&
+                !NotificationListenerService.isConnected
+            ) {
                 ServiceGuard.requestRebind(applicationContext)
             }
             kotlinx.coroutines.runBlocking {

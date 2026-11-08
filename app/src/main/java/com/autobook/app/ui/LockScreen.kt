@@ -55,6 +55,8 @@ fun LockScreen(onUnlocked: () -> Unit) {
 
     fun showBiometric() {
         val activity = context as? androidx.fragment.app.FragmentActivity ?: return
+        // 每次尝试前复位错误提示，避免失败一次后提示常驻
+        bioError = false
         val prompt = androidx.biometric.BiometricPrompt(
             activity,
             androidx.core.content.ContextCompat.getMainExecutor(context),

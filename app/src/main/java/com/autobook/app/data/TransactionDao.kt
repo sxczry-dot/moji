@@ -23,6 +23,7 @@ interface TransactionDao {
         insertAll(
             txs.map {
                 it.copy(
+                    id = 0, // 导入不带原 id（备份恢复才保留 id），避免与现有库主键冲突
                     insertedAt = now,
                     source = it.source.ifEmpty { "导入" },
                     localTimestamp = if (it.localTimestamp > 0) it.localTimestamp else it.timestamp
@@ -74,7 +75,7 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end ORDER BY localTimestamp DESC")
     fun getByRange(book: String, start: Long, end: Long): Flow<List<Transaction>>
 
-    @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end")
+    @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end ORDER BY localTimestamp DESC")
     suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction>
 
     @Query("SELECT * FROM transactions WHERE insertedAt >= :start ORDER BY insertedAt DESC")
@@ -110,7 +111,8 @@ interface TransactionDao {
         val dup = recent.firstOrNull { DedupChecker.isDuplicateOf(it, txWithArrival) }
         if (dup != null) return SaveResult.Duplicate(dup)
         val id = insert(txWithArrival)
-        val (start, end) = com.autobook.app.util.TimeUtils.monthRangeOf(now)
+        // 刷新记录所在月（按记录墙钟时间，而非到达时刻，跨月延迟到达也能刷对月份）
+        val (start, end) = com.autobook.app.util.TimeUtils.monthRangeOf(txWithArrival.localTime())
         return SaveResult.Inserted(id, getByRangeOnce(tx.book, start, end))
     }
 

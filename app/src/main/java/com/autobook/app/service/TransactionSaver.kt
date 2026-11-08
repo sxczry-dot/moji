@@ -5,28 +5,36 @@ import com.autobook.app.AutoBookApp
 import com.autobook.app.data.Transaction
 import com.autobook.app.parser.CategoryClassifier
 import com.autobook.app.parser.ParsedResult
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object TransactionSaver {
 
     val redPacketDeductionRegex = Regex("""使用\d+(?:\.\d{1,2})?元红包|红包抵扣|抵扣红包|红包立减""")
+
+    /** 入账串行锁：双渠道并发到达时"判重+插入"必须串行，避免 TOCTOU 双写 */
+    private val saveMutex = Mutex()
 
     /** 纯函数：识别退款类收入（含"退款/退回"的入账；"退款支出"方向已由解析器判为支出，不会被误标） */
     fun isRefundTransaction(type: Int, rawText: String, merchant: String): Boolean =
         type == Transaction.TYPE_INCOME &&
             (rawText.contains("退款") || rawText.contains("退回") || merchant.contains("退款"))
 
-    /** 查找近 30 天内同账本、同金额（±0.02）的支出记录，用于退款关联 */
-    private suspend fun hasRefundTarget(parsed: ParsedResult): Boolean {
+    /** 查找近 30 天内同账本、同金额（±0.02）的支出记录，用于退款关联；失败降级为不关联，不丢账 */
+    private suspend fun hasRefundTarget(parsed: ParsedResult): Boolean = try {
         val now = System.currentTimeMillis()
         val txs = AutoBookApp.instance.repository.getByRangeOnce(
             com.autobook.app.util.AppSettings.DEFAULT_BOOK,
             now - 30L * 24 * 3600 * 1000,
             now
         )
-        return txs.any {
+        txs.any {
             it.type == Transaction.TYPE_EXPENSE &&
                 kotlin.math.abs(it.amount - parsed.amount) < Transaction.AMOUNT_EPSILON
         }
+    } catch (e: Exception) {
+        android.util.Log.e("TransactionSaver", "hasRefundTarget failed, degraded", e)
+        false
     }
 
     sealed class Outcome {
@@ -80,7 +88,11 @@ object TransactionSaver {
                 localTimestamp = if (parsed.tradeTime in 1..now) parsed.tradeTime else now
             )
 
-            when (val result = repo.insertAndGetMonth(tx, now)) {
+            // 串行执行判重+插入（防双渠道并发双写）；其他逻辑在锁外
+            val result = saveMutex.withLock {
+                repo.insertAndGetMonth(tx, now)
+            }
+            when (result) {
                 is com.autobook.app.data.SaveResult.Duplicate -> {
                     val existing = result.existing
                     val existingIsFallback = existing.merchant.isBlank() ||
@@ -120,8 +132,9 @@ object TransactionSaver {
                     return Outcome.Duplicate
                 }
                 is com.autobook.app.data.SaveResult.Inserted -> {
-                    // 还款入账 → 核销对应信用卡账单提醒
-                    if (parsed.rawText.contains("还款")) {
+                    // 还款入账（仅支出方向）→ 核销对应信用卡账单提醒；
+                    // "收到张三还款5000元"是收入，不能核销信用卡账单
+                    if (parsed.type == Transaction.TYPE_EXPENSE && parsed.rawText.contains("还款")) {
                         com.autobook.app.util.AppSettings.clearBillDuesMatching(context, parsed.amount)
                     }
                     val monthTxs = result.monthTxs

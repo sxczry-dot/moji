@@ -10,11 +10,15 @@ import kotlinx.coroutines.launch
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
+        val pending = goAsync()
         ServiceGuard.schedule(context)
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 RecurringManager.checkAndRun(context)
+                BillReminder.checkAndNotify(context)
             } catch (_: Exception) {
+            } finally {
+                pending.finish()
             }
         }
     }

@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [Transaction::class], version = 6, exportSchema = true)
+@Database(entities = [Transaction::class], version = 7, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun transactionDao(): TransactionDao
@@ -15,6 +15,15 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var instance: AppDatabase? = null
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 判重热路径 getRecent 按 insertedAt 过滤，补索引避免全表扫描
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_transactions_insertedAt ON transactions(insertedAt)"
+                )
+            }
+        }
 
         private val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -94,7 +103,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         /** 全量迁移链：正式路径与迁移测试共用，避免测试漏挂 */
         val MIGRATIONS = arrayOf(
-            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7
         )
 
         fun get(context: Context): AppDatabase {

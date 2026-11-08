@@ -9,13 +9,15 @@ import java.util.Locale
 
 object CsvCodec {
 
-    private const val HEADER = "金额,类型,分类,商户,来源,时间,标签,账本"
+    // 含 id 列：完整备份恢复后保留原 id，星标（按 id 存）随备份恢复不失效
+    private const val HEADER = "id,金额,类型,分类,商户,来源,时间,标签,账本"
 
     fun encode(transactions: List<Transaction>): String {
         // 时间含毫秒：导入去重按精确时间戳比对，丢毫秒会导致重新导入必重复
         val timeFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.CHINA)
         val sb = StringBuilder(HEADER).append("\n")
         transactions.sortedBy { it.timestamp }.forEach { tx ->
+            sb.append(tx.id).append(",")
             sb.append(escape(formatAmount(tx.amount))).append(",")
             sb.append(if (tx.type == Transaction.TYPE_EXPENSE) "支出" else "收入").append(",")
             sb.append(escape(tx.category)).append(",")
@@ -51,7 +53,8 @@ object CsvCodec {
         }
         val columns = buildColumnMap(header)
         if (!columns.containsKey("金额") &&
-            !(columns.containsKey("收入金额") && columns.containsKey("支出金额"))
+            !columns.containsKey("收入金额") &&
+            !columns.containsKey("支出金额")
         ) {
             return emptyList()
         }
@@ -106,6 +109,7 @@ object CsvCodec {
                     map["时间"] = i
                 n.contains("标签") || n.contains("tag") -> map["标签"] = i
                 n.contains("账本") || n.contains("book") || n.contains("ledger") -> map["账本"] = i
+                n == "id" || n == "编号" -> map["id"] = i
             }
         }
         return map
@@ -158,6 +162,7 @@ object CsvCodec {
             parseTimeFlexible(timeCell) ?: return null
         }
         return Transaction(
+            id = cell("id").toLongOrNull()?.takeIf { it > 0 } ?: 0L,
             amount = amount,
             type = type,
             category = category,
@@ -189,7 +194,10 @@ object CsvCodec {
 
     private fun parseAmount(text: String): Double? {
         if (text.isBlank()) return null
-        val cleaned = text.replace(",", "").replace("¥", "").replace("￥", "").trim()
+        val cleaned = text.replace(",", "")
+            .replace("¥", "").replace("￥", "")
+            .removeSuffix("元")
+            .trim()
         return cleaned.toDoubleOrNull()
     }
 

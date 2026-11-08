@@ -65,7 +65,7 @@ class NotificationListenerService : android.service.notification.NotificationLis
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         }
         val pending = PendingIntent.getActivity(
-            this, 0, intent,
+            this, 1, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val notification = NotificationCompat.Builder(this, ALERT_CHANNEL_ID)
@@ -165,28 +165,40 @@ class NotificationListenerService : android.service.notification.NotificationLis
         }
 
         CoroutineScope(Dispatchers.IO).launch {
-            val learned = com.autobook.app.util.AppSettings.getLearnedCategory(applicationContext, parsed.merchant)
-            when (TransactionSaver.save(applicationContext, parsed, source)) {
-                TransactionSaver.Outcome.Inserted -> {
-                    val tag = if (learned != null) "（学习分类）" else ""
-                    AppSettings.addNotifLog(
-                        applicationContext,
-                        "$time | $channel | 已记账 ${com.autobook.app.util.formatAmount(parsed.amount)} · ${parsed.merchant}$tag | $safeText"
-                    )
+            try {
+                val learned = com.autobook.app.util.AppSettings.getLearnedCategory(applicationContext, parsed.merchant)
+                when (TransactionSaver.save(applicationContext, parsed, source)) {
+                    TransactionSaver.Outcome.Inserted -> {
+                        val tag = if (learned != null) "（学习分类）" else ""
+                        AppSettings.addNotifLog(
+                            applicationContext,
+                            "$time | $channel | 已记账 ${com.autobook.app.util.formatAmount(parsed.amount)} · ${parsed.merchant}$tag | $safeText"
+                        )
+                    }
+                    TransactionSaver.Outcome.Blocked -> {
+                        AppSettings.addNotifLog(
+                            applicationContext,
+                            "$time | $channel | 已屏蔽（命中屏蔽词）| $safeText"
+                        )
+                    }
+                    TransactionSaver.Outcome.Duplicate -> Unit
+                    TransactionSaver.Outcome.Paused -> Unit
+                    TransactionSaver.Outcome.Failed -> {
+                        AppSettings.addNotifLog(
+                            applicationContext,
+                            "$time | $channel | 保存失败 | $safeText"
+                        )
+                    }
                 }
-                TransactionSaver.Outcome.Blocked -> {
-                    AppSettings.addNotifLog(
-                        applicationContext,
-                        "$time | $channel | 已屏蔽（命中屏蔽词）| $safeText"
-                    )
-                }
-                TransactionSaver.Outcome.Duplicate -> Unit
-                TransactionSaver.Outcome.Paused -> Unit
-                TransactionSaver.Outcome.Failed -> {
+            } catch (e: Exception) {
+                // 保存链路异常兜底：与 SmsReceiver 对齐，避免异常带崩进程中断监听
+                android.util.Log.e("NotificationListener", "save failed", e)
+                try {
                     AppSettings.addNotifLog(
                         applicationContext,
                         "$time | $channel | 保存失败 | $safeText"
                     )
+                } catch (_: Exception) {
                 }
             }
         }

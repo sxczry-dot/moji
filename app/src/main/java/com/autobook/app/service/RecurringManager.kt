@@ -5,10 +5,25 @@ import com.autobook.app.AutoBookApp
 import com.autobook.app.data.Transaction
 import com.autobook.app.util.AppSettings
 import java.util.Calendar
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 object RecurringManager {
 
+    /** 多入口（10分钟闹钟/15分钟Worker/开机/打开App）并发调用时串行执行，防重复入账 */
+    private val runMutex = Mutex()
+
     suspend fun checkAndRun(context: Context) {
+        runMutex.withLock {
+            try {
+                runLocked(context)
+            } catch (e: Exception) {
+                android.util.Log.e("RecurringManager", "checkAndRun failed", e)
+            }
+        }
+    }
+
+    private suspend fun runLocked(context: Context) {
         // 与"暂停自动记账"开关语义一致：暂停期间周期记账同样不执行
         if (AppSettings.isAutoPaused(context)) return
         val rules = AppSettings.getRecurringRules(context)
@@ -30,7 +45,11 @@ object RecurringManager {
             // 每年=月*100+日（如903=9月3日）；月末=忽略 day
             val calDay = (rule.day % 7) + 1
             when (rule.period) {
-                0 -> if (day < rule.day) continue
+                // day>当月天数（如一键生成的31号规则）钳制到月末执行，短月不漏
+                0 -> {
+                    val targetDay = minOf(rule.day, cal.getActualMaximum(Calendar.DAY_OF_MONTH))
+                    if (day < targetDay) continue
+                }
                 // 只有"今天就是目标星期几"才执行，避免周日(calDay=1)规则因最小值判定失效而每天触发
                 1 -> if ((calDay - nowDayOfWeek + 7) % 7 != 0) continue
                 2 -> if (day != cal.getActualMaximum(Calendar.DAY_OF_MONTH)) continue

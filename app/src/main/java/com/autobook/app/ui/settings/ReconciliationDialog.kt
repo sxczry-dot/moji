@@ -44,7 +44,6 @@ fun ReconciliationDialog(onDismiss: () -> Unit) {
         val txs = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             com.autobook.app.AutoBookApp.instance.repository.getAllOnce()
         }
-        val snapshots = txs.count { it.balanceAfter > 0 }
         snapshotDays = txs
             .filter { it.balanceAfter > 0 }
             .map {
@@ -52,7 +51,10 @@ fun ReconciliationDialog(onDismiss: () -> Unit) {
                     .atZone(java.time.ZoneId.systemDefault()).toLocalDate()
             }
             .distinct().size
-        mismatches = ReconciliationCalculator.analyze(txs)
+        // 对账计算量 O(快照天数×流水数)，移出主线程
+        mismatches = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            ReconciliationCalculator.analyze(txs)
+        }
         loaded = true
     }
 

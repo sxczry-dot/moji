@@ -26,9 +26,12 @@ object NotificationParser {
     private val paymentKeywords = ParseRules.paymentKeywords
 
     private val incomeToAccountRegex = Regex(
-        """向您.{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
+        """向[你您].{0,12}(?:账户|卡).{0,8}(?:完成|入账|存入|转入|汇入|到账|转账)""",
         RegexOption.DOT_MATCHES_ALL
     )
+
+    /** "张三向你转账500元" 类点对点转入 */
+    private val p2pTransferRegex = Regex("""向[你您][^，,。]{0,10}?转账""")
 
     fun parse(packageName: String, title: String?, text: String?): ParsedResult? {
         if (packageName != WECHAT_PKG && packageName != ALIPAY_PKG &&
@@ -73,7 +76,8 @@ object NotificationParser {
 
         val isStrongExpense = ParseRules.strongExpenseKeywords.any { full.contains(it) }
         val isIncome = (ParseRules.refundIncomeKeywords.any { full.contains(it) } ||
-            incomeToAccountRegex.containsMatchIn(full)) &&
+            incomeToAccountRegex.containsMatchIn(full) ||
+            p2pTransferRegex.containsMatchIn(full)) &&
             !full.contains("收款方") && !full.contains("收款人") && !isStrongExpense
         val type = if (isIncome) Transaction.TYPE_INCOME else Transaction.TYPE_EXPENSE
 
@@ -95,7 +99,7 @@ object NotificationParser {
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
     private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
     private val balanceRegex = Regex(
-        """余额\s*(?:为|：|:)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?=[^\d.]|$)(?:\s*元)?"""
+        """余额\s*(?:为|：|:)?\s*(?:人民币)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?=[^\d.]|$)(?:\s*元)?"""
     )
 
     fun extractBalance(text: String): Double =
@@ -103,8 +107,14 @@ object NotificationParser {
 
     private val yuanAmountRegex = Regex("""(?<![0-9.])(\d+(?:\.\d{1,2})?)\s*元""")
 
+    /** 余额整段子句（金额提取前剥离，防止"余额500.00元，支出45.00元"把余额当交易金额） */
+    private val balanceClauseRegex = Regex(
+        """余额\s*(?:为|：|:)?\s*(?:人民币)?\s*[¥￥]?\s*\d[\d,]*(?:\.\d{1,2})?\s*元?"""
+    )
+
     private fun extractAmount(text: String): Double? {
         val cleaned = text.replace(",", "").replace("支付宝", "")
+            .replace(balanceClauseRegex, "")
             .replace(rebateAmountRegex, "").replace(originalPriceRegex, "")
         yuanAmountRegex.find(cleaned)?.let { m ->
             m.groupValues[1].toDoubleOrNull()?.let { return it }
@@ -120,13 +130,19 @@ object NotificationParser {
     private fun isAccountPlaceholder(name: String): Boolean =
         name.contains("尾号") || name.contains("余额") || name.contains("账户") || name == "您"
 
+    /** "于11月08日19:52消费" 这类日期串不能当商户名 */
+    private fun isDateLike(name: String): Boolean =
+        name.count { it.isDigit() } >= 3
+
     private val merchantStopWords = setOf("已", "您", "我", "本", "该", "成功", "一笔", "在线")
 
     private fun extractMerchantFromText(text: String): String {
         for (p in merchantPatterns) {
             val m = p.find(text) ?: continue
             val name = m.groupValues[1].trim()
-            if (name.length >= 2 && !isAccountPlaceholder(name) && name !in merchantStopWords) return name
+            if (name.length >= 2 && !isAccountPlaceholder(name) &&
+                !isDateLike(name) && name !in merchantStopWords
+            ) return name
         }
         return ""
     }
@@ -164,7 +180,9 @@ object NotificationParser {
         for (p in textMerchantPatterns) {
             val m = p.find(text) ?: continue
             val name = m.groupValues[1].trim()
-            if (name.length >= 2 && !isAccountPlaceholder(name) && name !in merchantStopWords) return name
+            if (name.length >= 2 && !isAccountPlaceholder(name) &&
+                !isDateLike(name) && name !in merchantStopWords
+            ) return name
         }
         return ""
     }

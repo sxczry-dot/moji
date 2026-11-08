@@ -164,7 +164,11 @@ fun TransactionDialog(
 
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = filterAmountInput(it) },
+                    onValueChange = {
+                        amountText = filterAmountInput(it)
+                        // 改正金额后立即清除错误红态
+                        amountError = false
+                    },
                     label = { Text("金额") },
                     isError = amountError,
                     keyboardOptions = KeyboardOptions(
@@ -340,78 +344,56 @@ fun TransactionDialog(
                             orderMap[it.name] ?: Int.MAX_VALUE
                         }
                         orderedGroups.forEach { group ->
-                            val selected = category == group.name
-                            val interactionSource = remember {
-                                androidx.compose.foundation.interaction.MutableInteractionSource()
-                            }
-                            val pressed by interactionSource.collectIsPressedAsState()
-                            val bounce = remember {
-                                androidx.compose.animation.core.Animatable(1f)
-                            }
-                            androidx.compose.runtime.LaunchedEffect(selected) {
-                                if (selected) {
-                                    bounce.snapTo(0.82f)
-                                    bounce.animateTo(
-                                        1f,
-                                        androidx.compose.animation.core.spring(
-                                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
-                                            stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
-                                        )
-                                    )
-                                }
-                            }
-                            Column(
-                                modifier = Modifier
-                                    .width(60.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        if (selected) MaterialTheme.colorScheme.primaryContainer
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                    .then(
-                                        if (selected) {
-                                            Modifier.border(
-                                                1.5.dp,
-                                                MaterialTheme.colorScheme.primary,
-                                                RoundedCornerShape(12.dp)
-                                            )
-                                        } else {
-                                            Modifier
-                                        }
-                                    )
-                                    .graphicsLayer {
-                                        val scale = bounce.value * (if (pressed) 0.95f else 1f)
-                                        scaleX = scale
-                                        scaleY = scale
-                                    }
-                                    .clickable(
-                                        interactionSource = interactionSource,
-                                        indication = LocalIndication.current
-                                    ) {
+                            // key() 隔离每项的 remember 槽位：所有分类共享同一 interactionSource 会导致按一个全部压扁
+                            androidx.compose.runtime.key(group.name) {
+                                CategoryChip(
+                                    groupName = group.name,
+                                    selected = category == group.name,
+                                    onSelect = {
                                         category = group.name
                                         lastExpenseCategory = group.name
                                     }
-                                    .padding(vertical = 10.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                Icon(
-                                    imageVector = CategoryUi.iconOf(group.name),
-                                    contentDescription = group.name,
-                                    tint = if (selected) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(Modifier.height(4.dp))
-                                Text(
-                                    text = group.name,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                                    else MaterialTheme.colorScheme.onSurface
                                 )
                             }
                         }
                     }
+                }
+                // 账本选择仅编辑已有记录时展示（手动记账固定记入当前账本）
+                if (tx != null) {
+                    Text(
+                        text = "账本",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp)
+                    )
+                    FlowRow(modifier = Modifier.fillMaxWidth()) {
+                        books.forEach { b ->
+                            FilterChip(
+                                selected = book == b,
+                                onClick = { book = b },
+                                label = { Text(b, fontSize = 11.sp) },
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        androidx.compose.material.icons.Icons.Outlined.Schedule,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "时间：${com.autobook.app.util.formatTime(editTimestamp)}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    TextButton(onClick = { showTimePicker = true }) { Text("修改", fontSize = 13.sp) }
                 }
             }
         },
@@ -481,7 +463,7 @@ fun TransactionDialog(
             onDismissRequest = { showTimePicker = false },
             title = { Text("修改时间") },
             text = {
-                Column {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(
                             onClick = {
@@ -505,7 +487,7 @@ fun TransactionDialog(
                         ) { Text("昨天", fontSize = 11.sp) }
                         Spacer(Modifier.weight(1f))
                         Text(
-                            text = "${pickYear}年${pickMonth}月",
+                            text = "${pickYear}年${pickMonth}月${minOf(pickDay, java.time.YearMonth.of(pickYear, pickMonth).lengthOfMonth())}日",
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -516,6 +498,11 @@ fun TransactionDialog(
                                     pickMonth = 12
                                     pickYear = (pickYear - 1).coerceAtLeast(2019)
                                 }
+                                // 切月即时钳制：避免选 1月31 切到 2月后网格无高亮、保存出意外日期
+                                pickDay = minOf(
+                                    pickDay,
+                                    java.time.YearMonth.of(pickYear, pickMonth).lengthOfMonth()
+                                )
                             }
                         ) { Text("◀", fontSize = 11.sp) }
                         TextButton(
@@ -525,6 +512,10 @@ fun TransactionDialog(
                                     pickMonth = 1
                                     if (pickYear < 2100) pickYear++
                                 }
+                                pickDay = minOf(
+                                    pickDay,
+                                    java.time.YearMonth.of(pickYear, pickMonth).lengthOfMonth()
+                                )
                             }
                         ) { Text("▶", fontSize = 11.sp) }
                     }
@@ -652,6 +643,76 @@ fun TransactionDialog(
             dismissButton = {
                 TextButton(onClick = { showTimePicker = false }) { Text("取消") }
             }
+        )
+    }
+}
+
+/** 分类格子独立组件：remember 槽位按 item 隔离，避免所有分类共享同一 interactionSource/动画实例 */
+@Composable
+private fun CategoryChip(groupName: String, selected: Boolean, onSelect: () -> Unit) {
+    val interactionSource = remember {
+        androidx.compose.foundation.interaction.MutableInteractionSource()
+    }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val bounce = remember { androidx.compose.animation.core.Animatable(1f) }
+    androidx.compose.runtime.LaunchedEffect(selected) {
+        if (selected) {
+            bounce.snapTo(0.82f)
+            bounce.animateTo(
+                1f,
+                androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
+                )
+            )
+        }
+    }
+    Column(
+        modifier = Modifier
+            .width(60.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceVariant
+            )
+            .then(
+                if (selected) {
+                    Modifier.border(
+                        1.5.dp,
+                        MaterialTheme.colorScheme.primary,
+                        RoundedCornerShape(12.dp)
+                    )
+                } else {
+                    Modifier
+                }
+            )
+            .graphicsLayer {
+                val scale = bounce.value * (if (pressed) 0.95f else 1f)
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                onClick = onSelect
+            )
+            .padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = CategoryUi.iconOf(groupName),
+            contentDescription = groupName,
+            tint = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = groupName,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface
         )
     }
 }

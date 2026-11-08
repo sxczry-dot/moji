@@ -12,6 +12,8 @@ object DedupChecker {
     const val SAME_SOURCE_UNKNOWN_MERCHANT_WINDOW_MS = 3_000L
     // 跨渠道商户名不同但同金额且时间极近（如短信=公司全称、通知=通用标题）：判重后由合并逻辑保留更准确的商户并打"双渠道"标签
     const val DIFFERENT_MERCHANT_DEDUP_WINDOW_MS = 120_000L
+    // 双方商户名都很具体但不同（如公司全称 vs 品牌名）：仅 1 分钟内判重
+    const val DIFFERENT_SPECIFIC_MERCHANT_DEDUP_WINDOW_MS = 60_000L
 
     // 通知没提取到商户名时，入库用渠道名兜底（如"微信"），这种不算真实商户名
     private fun merchantKey(tx: Transaction): String {
@@ -21,6 +23,7 @@ object DedupChecker {
 
     fun isDuplicateOf(existing: Transaction, tx: Transaction): Boolean {
         if (existing.refNo.isNotEmpty() && existing.refNo == tx.refNo &&
+            existing.type == tx.type &&
             abs(existing.amount - tx.amount) < Transaction.AMOUNT_EPSILON
         ) return true
         if (abs(existing.amount - tx.amount) >= Transaction.AMOUNT_EPSILON) return false
@@ -39,8 +42,17 @@ object DedupChecker {
             if (existingKey == txKey) {
                 return abs(existing.timestamp - tx.timestamp) < MERCHANT_MATCH_WINDOW_MS
             }
-            // 商户名不同：仅当时间极近时判重（合并逻辑会保留更准确的商户名并标注"双渠道"）
-            return abs(existing.timestamp - tx.timestamp) < DIFFERENT_MERCHANT_DEDUP_WINDOW_MS
+            // 商户名不同：一方是通用标题（交易提醒/动账通知等）时 2 分钟内判重；
+            // 双方都很具体（如公司全称 vs 品牌名）时仅 1 分钟内判重，避免吞掉两笔真实同金额交易
+            val oneSideGeneric =
+                existing.merchant in com.autobook.app.parser.ParseRules.genericTitles ||
+                    tx.merchant in com.autobook.app.parser.ParseRules.genericTitles
+            val window = if (oneSideGeneric) {
+                DIFFERENT_MERCHANT_DEDUP_WINDOW_MS
+            } else {
+                DIFFERENT_SPECIFIC_MERCHANT_DEDUP_WINDOW_MS
+            }
+            return abs(existing.timestamp - tx.timestamp) < window
         }
         return abs(existing.timestamp - tx.timestamp) < CROSS_SOURCE_WINDOW_MS
     }

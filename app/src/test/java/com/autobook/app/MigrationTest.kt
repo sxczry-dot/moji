@@ -135,8 +135,35 @@ class MigrationTest {
     }
 
     @Test
-    fun `迁移链声明覆盖1到6`() {
-        // v1-v4 schema 未导出无法做全链路，但验证当前迁移链无缺口（防未来改坏）
+    fun `v6 升级到 v7 迁移正确`() {
+        val name = "migration_6_7_${System.nanoTime()}.db"
+        val legacy = createLegacyDb(name, 6)
+        legacy.execSQL(
+            "INSERT INTO transactions (amount, type, category, merchant, source, timestamp, tags, book, refNo, insertedAt, balanceAfter, localTimestamp) " +
+                "VALUES (25.5, 0, '餐饮美食', '美团', '微信', 1755916200123, '', '默认账本', '', 1755916200123, 0, 1755916200123)"
+        )
+        legacy.close()
+
+        // 用当前代码 Room 打开 → 执行 6→7 迁移（Room 表结构校验通过即证明 insertedAt 索引已建）
+        val db = openWithMigrations(name)
+        val txs = kotlinx.coroutines.runBlocking { db.transactionDao().getAllOnce() }
+        assertEquals(1, txs.size)
+        assertEquals(25.5, txs[0].amount, 0.001)
+        db.close()
+        context.deleteDatabase(name)
+    }
+
+    @Test
+    fun `迁移链声明覆盖1到7`() {
+        // 验证迁移链对每一段版本区间都有声明（防未来改坏）
+        val covered = mutableSetOf<Int>()
+        AppDatabase.MIGRATIONS.forEach { m ->
+            for (v in m.startVersion until m.endVersion) covered += v
+        }
+        for (v in 1 until 7) {
+            assertEquals("版本区间 $v 缺迁移", true, covered.contains(v))
+        }
+        // 真实开一次库冒烟
         val db = openWithMigrations("migration_probe.db")
         db.close()
         context.deleteDatabase("migration_probe.db")

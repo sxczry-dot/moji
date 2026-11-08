@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,13 +47,16 @@ class MainViewModelTest {
     }
 
     @Test
-    fun `quickAdd 事件只触发一次`() = runTest {
-        assertEquals(0, vm.quickAddRequest.first())
+    fun `quickAdd 事件token语义`() = runTest {
+        assertEquals(0L, vm.quickAddRequest.first())
         vm.postQuickAdd()
+        val first = vm.quickAddRequest.first()
+        assertTrue(first > 0L)
         vm.postQuickAdd()
-        assertEquals(2, vm.quickAddRequest.first())
+        // 唯一 token：连点两次不合并（旧计数语义会把两次合并成一次弹窗）
+        assertTrue(vm.quickAddRequest.first() > 0L && vm.quickAddRequest.first() != first)
         vm.consumeQuickAdd()
-        assertEquals(0, vm.quickAddRequest.first())
+        assertEquals(0L, vm.quickAddRequest.first())
     }
 
     @Test

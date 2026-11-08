@@ -196,8 +196,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                         CsvCodec.encode(AutoBookApp.instance.repository.getAllOnce())
                     )
                     val data = ("ABK1\n" + json.toString()).toByteArray(Charsets.UTF_8)
-                    context.contentResolver.openOutputStream(uri)?.use { it.write(data) }
-                    resultMessage = "完整备份已保存"
+                    val out = context.contentResolver.openOutputStream(uri)
+                    if (out == null) {
+                        resultMessage = "备份失败：无法写入目标文件"
+                    } else {
+                        out.use { it.write(data) }
+                        resultMessage = "完整备份已保存"
+                    }
                 } catch (e: Exception) {
                     resultMessage = "备份失败：${e.message}"
                 }
@@ -231,11 +236,14 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         if (uri != null) {
             scope.launch(Dispatchers.IO) {
                 try {
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        out.write(exportPendingCsv.toByteArray(Charsets.UTF_8))
+                    val out = context.contentResolver.openOutputStream(uri)
+                    if (out == null) {
+                        resultMessage = "导出失败：无法写入目标文件"
+                    } else {
+                        out.use { it.write(exportPendingCsv.toByteArray(Charsets.UTF_8)) }
+                        exportedUri = uri.toString()
+                        resultMessage = "已导出 ${exportPendingCount} 笔记录"
                     }
-                    exportedUri = uri.toString()
-                    resultMessage = "已导出 ${exportPendingCount} 笔记录"
                 } catch (e: Exception) {
                     resultMessage = "导出失败：${e.message}"
                 }
@@ -1360,7 +1368,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：4.98\n" +
+                                        "应用版本：4.99\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1377,7 +1385,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v4.98",
+            text = "默记 v4.99",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1747,11 +1755,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                             try {
                                 val json = org.json.JSONObject(pending)
                                 val txs = CsvCodec.decode(json.getString("csv"))
-                                AutoBookApp.instance.repository.replaceAll(txs)
+                                // 先导入设置（失败即中止，不动账本），再覆盖账本：避免"半成功"后旧数据已被覆盖
                                 com.autobook.app.util.AppSettings.importAllSettings(
                                     context,
                                     json.getString("settings")
                                 )
+                                AutoBookApp.instance.repository.replaceAll(txs)
                                 resultMessage = "恢复完成：${txs.size} 笔记录"
                                 // 覆盖式恢复后重建界面，刷新全部开关/账本状态
                                 kotlinx.coroutines.withContext(Dispatchers.Main) {
@@ -1807,6 +1816,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         )
     }
 }
+
 
 
 
