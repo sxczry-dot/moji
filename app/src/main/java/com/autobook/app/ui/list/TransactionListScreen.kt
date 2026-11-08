@@ -762,6 +762,33 @@ fun TransactionListScreen(modifier: Modifier = Modifier, scrollTopTick: Int = 0)
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                         }
                                     )
+                                    Spacer(Modifier.weight(1f))
+                                    // 每天的结余
+                                    if (hideAmount) {
+                                        Text(
+                                            text = "结余 ****",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    } else {
+                                        val dayExpense = txs
+                                            .filter { it.type == Transaction.TYPE_EXPENSE }
+                                            .sumOf { it.amount }
+                                        val dayIncome = txs
+                                            .filter { it.type == Transaction.TYPE_INCOME }
+                                            .sumOf { it.amount }
+                                        val dayBalance = dayIncome - dayExpense
+                                        Text(
+                                            text = "结余 ${if (dayBalance >= 0) "+" else "-"}¥${com.autobook.app.util.formatAmount(kotlin.math.abs(dayBalance))}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (dayBalance >= 0) {
+                                                com.autobook.app.ui.theme.IncomeBlue
+                                            } else {
+                                                com.autobook.app.ui.theme.ExpenseRed
+                                            }
+                                        )
+                                    }
                                 }
                                 androidx.compose.animation.AnimatedVisibility(
                                     visible = dayIndex == 0 &&
