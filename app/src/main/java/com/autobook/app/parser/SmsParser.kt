@@ -18,6 +18,9 @@ object SmsParser {
     /** "张三向你转账500元" 类点对点转入 */
     private val p2pTransferRegex = Regex("""向[你您][^，,。]{0,10}?转账""")
 
+    /** "收到跨行转账2000元" 类转入（"收到转账"关键词覆盖不了跨行变体） */
+    private val receivedTransferRegex = Regex("""收到[^，,。]{0,8}?转账""")
+
     private val amountRegex = Regex("""(?<![0-9.])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)\s*元""")
 
     private val contextualAmountRegex = Regex(
@@ -32,9 +35,11 @@ object SmsParser {
         Regex("""^(.{2,20}?)于.{0,16}?向您"""),
         Regex("""在[（(]?([^）)]{1,20})[）)]?发生"""),
         Regex("""在(.{1,20}?)(?:支付|消费|购买|缴纳)"""),
-        Regex("""向(.{1,20}?)(?:完成|支付|消费|购买)"""),
+        Regex("""向(.{1,20}?)(?:完成|支付|消费|购买|还款)"""),
         Regex("""(?:商户|商家)[：:]\s*(.{1,20})"""),
-        Regex("""于(.{1,20}?)(?:消费|支付)""")
+        Regex("""于(.{1,20}?)(?:消费|支付)"""),
+        // 兜底：正文括号内容（如"（京东商城）"）
+        Regex("""[（(]([^）)]{1,20})[）)]""")
     )
 
     fun parse(sender: String, body: String): ParsedResult? {
@@ -48,7 +53,8 @@ object SmsParser {
         val hasRefundIncome = body.contains("退款") && !body.contains("退款支出")
         val isIncome = ((incomeKeywords.any { body.contains(it) } ||
             incomeToAccountRegex.containsMatchIn(body) ||
-            p2pTransferRegex.containsMatchIn(body)) && !isStrongExpense) ||
+            p2pTransferRegex.containsMatchIn(body) ||
+            receivedTransferRegex.containsMatchIn(body)) && !isStrongExpense) ||
             (hasRefundIncome && !body.contains("支出") && !body.contains("扣款"))
         if (!isExpense && !isIncome) return null
 

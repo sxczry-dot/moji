@@ -31,10 +31,10 @@ object ParseRules {
 
     // ===== 通知通道 =====
     val paymentKeywords = listOf(
-        "支付", "付款", "收款", "转账", "退款", "消费", "入账", "扣款", "支出", "交易", "还款", "缴费", "缴纳"
+        "支付", "付款", "收款", "转账", "退款", "消费", "入账", "存入", "扣款", "支出", "交易", "还款", "缴费", "缴纳"
     )
     val refundIncomeKeywords = listOf(
-        "收款", "入账", "转入", "收到", "退款", "返现", "收入", "到账", "汇入"
+        "收款", "入账", "转入", "存入", "收到", "退款", "返现", "收入", "到账", "汇入"
     )
     val strongExpenseKeywords = listOf("支出", "扣款")
     val financialBlockWords = listOf(
@@ -42,12 +42,12 @@ object ParseRules {
     )
     val summaryWords = listOf(
         "共计", "总计", "汇总", "账单已出", "账单未出", "对账单", "本期账单", "月账单",
-        "账单出炉", "应还款", "最后还款日"
+        "账单出炉", "应还款", "最后还款日", "本期应还"
     )
     val marketingStrongWords = listOf("立减金", "优惠券", "满减", "抽奖", "邀您", "礼包")
     val marketingWeakWords = listOf("积分", "待领取", "点击领取", "限时")
     val bankGateWords = listOf(
-        "银行", "支出", "收入", "消费", "交易", "支付", "入账", "收款", "转入",
+        "银行", "支出", "收入", "消费", "交易", "支付", "入账", "存入", "收款", "转入",
         "退款", "还款", "到账", "转账", "缴费", "缴纳"
     )
     val genericTitles = setOf(
