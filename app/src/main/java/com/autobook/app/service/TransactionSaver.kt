@@ -20,11 +20,11 @@ object TransactionSaver {
         type == Transaction.TYPE_INCOME &&
             (rawText.contains("退款") || rawText.contains("退回") || merchant.contains("退款"))
 
-    /** 查找近 30 天内同账本、同金额（±0.02）的支出记录，用于退款关联；失败降级为不关联，不丢账 */
+    /** 查找近 30 天内同金额（±0.02）的支出记录，用于退款关联；失败降级为不关联，不丢账。
+     *  跨全账本查找：原消费可能记在非默认账本，只看默认账本会关联不上 */
     private suspend fun hasRefundTarget(parsed: ParsedResult): Boolean = try {
         val now = System.currentTimeMillis()
-        val txs = AutoBookApp.instance.repository.getByRangeOnce(
-            com.autobook.app.util.AppSettings.DEFAULT_BOOK,
+        val txs = AutoBookApp.instance.repository.getByRangeAllBooksOnce(
             now - 30L * 24 * 3600 * 1000,
             now
         )
@@ -125,9 +125,12 @@ object TransactionSaver {
                     }
                     val time = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.CHINA)
                         .format(java.util.Date())
+                    // 同渠道合并：可能是两笔真实的同额交易被窗口判重吞掉，提示用户核对
+                    val sameSourceHint =
+                        if (result.existing.source == source) "（如实际为两笔，请手动补记）" else ""
                     com.autobook.app.util.AppSettings.addNotifLog(
                         context,
-                        "$time | 去重 | 已合并：${result.existing.source} ${com.autobook.app.util.formatAmount(result.existing.amount)} = $source ${com.autobook.app.util.formatAmount(tx.amount)}"
+                        "$time | 去重 | 已合并：${result.existing.source} ${com.autobook.app.util.formatAmount(result.existing.amount)} = $source ${com.autobook.app.util.formatAmount(tx.amount)}$sameSourceHint"
                     )
                     return Outcome.Duplicate
                 }

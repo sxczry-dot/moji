@@ -84,7 +84,13 @@ fun ExportDialog(
                     Spacer(Modifier.height(10.dp))
                     FlowRow {
                         val nowYear = YearMonth.now().year
-                        (2019..nowYear).reversed().forEach { y ->
+                        // 起始年份取账单里最早记录的年份（无记录时只显示今年）
+                        val earliestYear = allTxs.minOfOrNull { tx ->
+                            java.util.Calendar.getInstance().apply {
+                                timeInMillis = tx.localTime()
+                            }.get(java.util.Calendar.YEAR)
+                        } ?: nowYear
+                        (minOf(earliestYear, nowYear)..nowYear).reversed().forEach { y ->
                             FilterChip(
                                 selected = selectedYear == y,
                                 onClick = { selectedYear = y },

@@ -41,6 +41,7 @@ data class Transaction(
         const val SOURCE_WECHAT = "微信"
         const val SOURCE_ALIPAY = "支付宝"
         const val SOURCE_UNIONPAY = "云闪付"
+        const val SOURCE_JD = "京东"
         const val SOURCE_SMS = "短信"
         const val SOURCE_RECURRING = "周期"
 

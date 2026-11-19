@@ -23,9 +23,16 @@ class NotificationListenerService : android.service.notification.NotificationLis
         private const val NOTIFICATION_ID = 3001
         private const val ALERT_CHANNEL_ID = "disconnect_alert"
         private const val ALERT_NOTIFICATION_ID = 3002
+        /** 补偿扫描节流间隔：onListenerConnected 可能频繁触发（重绑/重启），10 分钟内只扫一次 */
+        private const val CATCH_UP_THROTTLE_MS = 10 * 60 * 1000L
+        /** 只补扫 24 小时内的通知，更早的通知即使漏了也不补（避免老通知突然入账） */
+        private const val CATCH_UP_MAX_AGE_MS = 24 * 60 * 60 * 1000L
 
         @Volatile
         var isConnected = false
+
+        @Volatile
+        private var lastCatchUpAt = 0L
     }
 
     private val disconnectHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -39,16 +46,42 @@ class NotificationListenerService : android.service.notification.NotificationLis
         isConnected = true
         disconnectHandler.removeCallbacks(disconnectAlertRunnable)
         updatePersistentNotification()
+        catchUpMissedNotifications()
+    }
+
+    /**
+     * 漏记补偿：监听重连时扫描通知栏里仍存活的通知，补处理断开期间漏掉的支付通知。
+     * 已入账的会被去重窗口天然挡掉，未匹配的只进日志，不会重复入账。
+     */
+    private fun catchUpMissedNotifications() {
+        val now = System.currentTimeMillis()
+        if (now - lastCatchUpAt < CATCH_UP_THROTTLE_MS) return
+        lastCatchUpAt = now
+        val active = try {
+            activeNotifications?.toList() ?: return
+        } catch (e: Exception) {
+            android.util.Log.e("NotificationListener", "activeNotifications failed", e)
+            return
+        }
+        CoroutineScope(Dispatchers.IO).launch {
+            for (sbn in active) {
+                val age = now - sbn.postTime
+                if (age < 0 || age >= CATCH_UP_MAX_AGE_MS) continue
+                try {
+                    processNotification(sbn, catchUp = true)
+                } catch (e: Exception) {
+                    android.util.Log.e("NotificationListener", "catchUp failed", e)
+                }
+            }
+        }
     }
 
     override fun onListenerDisconnected() {
         isConnected = false
-        try {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-        } catch (_: Exception) {
-        }
         disconnectHandler.removeCallbacks(disconnectAlertRunnable)
         disconnectHandler.postDelayed(disconnectAlertRunnable, 10_000)
+        // 系统会在进程恢复后自动重连；主动请求一次重绑加速恢复
+        ServiceGuard.requestRebind(this)
     }
 
     private fun sendDisconnectAlert() {
@@ -82,9 +115,12 @@ class NotificationListenerService : android.service.notification.NotificationLis
     }
 
     private fun updatePersistentNotification() {
-        if (!AppSettings.isPersistentNotification(this)) return
-
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (!AppSettings.isPersistentNotification(this)) {
+            manager.cancel(NOTIFICATION_ID)
+            return
+        }
+
         val channel = NotificationChannel(
             CHANNEL_ID,
             "运行状态",
@@ -108,13 +144,18 @@ class NotificationListenerService : android.service.notification.NotificationLis
             .setSilent(true)
             .build()
 
+        // 普通常驻通知即可，无需前台服务：监听服务本身由系统托管保活
         try {
-            startForeground(NOTIFICATION_ID, notification)
-        } catch (_: Exception) {
+            NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
         }
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        processNotification(sbn, catchUp = false)
+    }
+
+    private fun processNotification(sbn: StatusBarNotification, catchUp: Boolean) {
         val pkg = sbn.packageName
         val bankName = NotificationParser.bankNameOf(pkg)
         if (pkg != NotificationParser.WECHAT_PKG &&
@@ -128,25 +169,39 @@ class NotificationListenerService : android.service.notification.NotificationLis
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val subText = extras.getCharSequence(Notification.EXTRA_SUB_TEXT)?.toString()
-        val combinedText = listOfNotNull(text, subText)
+        // BigTextStyle 的正文在 BIG_TEXT 里（展开后全文常比 TEXT 更完整）；
+        // InboxStyle 的多行在 TEXT_LINES 里——不读会漏掉银行/支付 App 的交易正文
+        val bigText = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+            ?.mapNotNull { it?.toString() }
+            ?.filter { it.isNotBlank() }
+            ?.joinToString(" ")
+        val combinedText = listOfNotNull(text, bigText, textLines, subText)
             .filter { it.isNotBlank() }
             .joinToString(" ")
             .ifEmpty { null }
 
-        val parsed = NotificationParser.parse(pkg, title, combinedText)
+        // 补偿扫描：交易时间按通知发布时间计，让漏记补回的账目落在正确的时间点，
+        // 也让去重窗口与实时到达时的表现一致
+        val parsed = NotificationParser.parse(pkg, title, combinedText)?.let { p ->
+            if (catchUp && p.tradeTime <= 0L) p.copy(tradeTime = sbn.postTime) else p
+        }
         val full = "${title ?: ""} ${combinedText ?: ""}"
 
         val time = com.autobook.app.util.TimeUtils.formatShortTime(System.currentTimeMillis())
+        val catchUpTag = if (catchUp) "（补偿）" else ""
         val channel = when {
             pkg == NotificationParser.WECHAT_PKG -> "微信"
             pkg == NotificationParser.ALIPAY_PKG -> "支付宝"
             pkg == NotificationParser.UNIONPAY_PKG -> "云闪付"
             pkg == NotificationParser.JD_PKG -> "京东"
             else -> bankName ?: pkg
-        }
+        } + catchUpTag
         val safeText = (combinedText ?: "").replace("\\n", " ").take(60)
 
         if (parsed == null) {
+            // 补偿扫描只关心可入账的支付通知；未匹配的不刷日志（补偿扫到的多半是旧通知，刷屏没意义）
+            if (catchUp) return
             val reason = com.autobook.app.util.NotifDiagnose.reasonOf(full)
             val result = if (reason != null) "未匹配（$reason）" else "未匹配"
             // SharedPreferences 读写挪到 IO 线程，避免主线程卡顿
@@ -160,7 +215,7 @@ class NotificationListenerService : android.service.notification.NotificationLis
             pkg == NotificationParser.WECHAT_PKG -> Transaction.SOURCE_WECHAT
             pkg == NotificationParser.ALIPAY_PKG -> Transaction.SOURCE_ALIPAY
             pkg == NotificationParser.UNIONPAY_PKG -> Transaction.SOURCE_UNIONPAY
-            pkg == NotificationParser.JD_PKG -> "京东"
+            pkg == NotificationParser.JD_PKG -> Transaction.SOURCE_JD
             else -> bankName ?: pkg
         }
 

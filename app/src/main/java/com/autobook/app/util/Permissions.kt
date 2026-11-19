@@ -49,10 +49,4 @@ object Permissions {
         val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
         return pm.isIgnoringBatteryOptimizations(context.packageName)
     }
-
-    fun canScheduleExactAlarm(context: Context): Boolean {
-        if (Build.VERSION.SDK_INT < 31) return true
-        val am = context.getSystemService(Context.ALARM_SERVICE) as android.app.AlarmManager
-        return am.canScheduleExactAlarms()
-    }
 }

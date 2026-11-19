@@ -33,8 +33,8 @@ object NotificationParser {
         RegexOption.DOT_MATCHES_ALL
     )
 
-    /** "张三向你转账500元" 类点对点转入 */
-    private val p2pTransferRegex = Regex("""向[你您][^，,。]{0,10}?转账""")
+    /** "张三向你转账500元" 类点对点转入；排除"请（您）向…转账"类指示性文案（要求你付款，非收入） */
+    private val p2pTransferRegex = Regex("""(?<![请邀议][你您]?)向[你您][^，,。]{0,10}?转账""")
 
     fun parse(packageName: String, title: String?, text: String?): ParsedResult? {
         if (packageName != WECHAT_PKG && packageName != ALIPAY_PKG &&
@@ -82,6 +82,8 @@ object NotificationParser {
             incomeToAccountRegex.containsMatchIn(full) ||
             p2pTransferRegex.containsMatchIn(full)) &&
             !full.contains("收款方") && !full.contains("收款人") && !isStrongExpense
+        // 收入未完成态（"退款已受理，预计3日到账"）：钱没实际到账，提前记收入会变成幽灵收入
+        if (isIncome && ParseRules.pendingIncomeWords.any { full.contains(it) }) return null
         val type = if (isIncome) Transaction.TYPE_INCOME else Transaction.TYPE_EXPENSE
 
         val merchant = if (bankNameOf(packageName) != null) {
@@ -96,11 +98,19 @@ object NotificationParser {
     }
 
     private val contextualAmountRegex = Regex(
-        """(?:支出|消费|收入|付款|支付|退款|交易|转账|实付|已扣|还款|缴费|缴纳)[^0-9¥￥]{0,6}[-－]?\s*(?<![0-9.])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)"""
+        """(?:支出|消费|收入|付款|支付|退款|交易|转账|实付|已扣|还款|缴费|缴纳)[^0-9¥￥]{0,4}[-－]?\s*(?<![0-9.])(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?![\d.])"""
     )
 
     private val rebateAmountRegex = Regex("""返\s*[¥￥]\s*\d+(?:\.\d{1,2})?(?:\s*元)?""")
     private val originalPriceRegex = Regex("""(?:原价|划线价|门市价)\s*\d+(?:\.\d{1,2})?\s*元""")
+    /** 优惠减免金额（"已优惠5元/立减5元/抵扣5元"）：不是交易额，提取前剥离，避免盖过"实付45元" */
+    private val discountAmountRegex = Regex(
+        """(?:优惠|立减|折扣|抵扣)\s*[¥￥]?\s*\d+(?:\.\d{1,2})?\s*元?"""
+    )
+    /** "领1元生活缴费红包" 类红包金额：不是交易额，提取前剥离，避免语境词跨过它抓到红包金额 */
+    private val redPacketAmountRegex = Regex(
+        """(?:领|用|使用)?\s*\d+(?:\.\d{1,2})?\s*元[^，,。；;]{0,8}?红包"""
+    )
     private val balanceRegex = Regex(
         """余额\s*(?:为|：|:)?\s*(?:人民币)?\s*[¥￥]?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)(?=[^\d.]|$)(?:\s*元)?"""
     )
@@ -119,12 +129,15 @@ object NotificationParser {
         val cleaned = text.replace(",", "").replace("支付宝", "")
             .replace(balanceClauseRegex, "")
             .replace(rebateAmountRegex, "").replace(originalPriceRegex, "")
-        yuanAmountRegex.find(cleaned)?.let { m ->
-            m.groupValues[1].toDoubleOrNull()?.let { return it }
-        }
+            .replace(discountAmountRegex, "")
+            .replace(redPacketAmountRegex, "")
+        // 语境金额优先（"支出/实付/已扣"等词紧邻的数字），避免"已优惠5元，实付45元"抓到 5 元
         val contextual = contextualAmountRegex.find(cleaned)
         if (contextual != null) {
             return contextual.groupValues[1].toDoubleOrNull()
+        }
+        yuanAmountRegex.find(cleaned)?.let { m ->
+            m.groupValues[1].toDoubleOrNull()?.let { return it }
         }
         val match = amountRegex.find(cleaned) ?: return null
         return (match.groups[1]?.value ?: match.groups[2]?.value)?.toDoubleOrNull()
@@ -144,7 +157,9 @@ object NotificationParser {
         val bracketed = Regex("""[（(]([^）)]{1,20})[）)]""").find(raw)
         if (bracketed != null) {
             val inner = bracketed.groupValues[1].trim()
-            if (inner.length >= 2 && !isAccountPlaceholder(inner) &&
+            // 括号内是金额/券说明（"满3元可用，储蓄卡专享"）不是商户名
+            val moneyLike = inner.contains("元") || inner.contains("券")
+            if (!moneyLike && inner.length >= 2 && !isAccountPlaceholder(inner) &&
                 !isDateLike(inner) && inner !in merchantStopWords
             ) {
                 return inner

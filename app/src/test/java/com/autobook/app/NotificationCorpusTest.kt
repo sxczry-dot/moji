@@ -149,4 +149,32 @@ class NotificationCorpusTest {
         )
         assertTrue("商户应含京东商城，实际=${r!!.merchant}", r.merchant.contains("京东商城"))
     }
+
+    @Test
+    fun `招行返现券奖品发放拦截`() {
+        // 真实误报：奖品发放通知被记成 1.50 元收入（2026-11-19 用户反馈）
+        val r = NotificationParser.parse(
+            "com.cmbchina.ccd.pluto.cmbActivity", "招商银行",
+            "您的奖品“1.5元支付返现券（满3元可用，储蓄卡专享）”已发放，请及时查看。"
+        )
+        assertNull(r)
+    }
+
+    @Test
+    fun `短信奖品返现券拦截`() {
+        val r = SmsParser.parse(
+            "95555",
+            "【招商银行】恭喜您获得奖品：3元支付返现券，请在有效期内使用。"
+        )
+        assertNull(r)
+    }
+
+    @Test
+    fun `立减金发放通知拦截`() {
+        val r = NotificationParser.parse(
+            "com.cmbchina.ccd.pluto.cmbActivity", "招商银行",
+            "您有一张6.6元立减金已到账，快去使用吧。"
+        )
+        assertNull(r)
+    }
 }

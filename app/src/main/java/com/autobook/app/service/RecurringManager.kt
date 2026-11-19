@@ -10,6 +10,26 @@ import kotlinx.coroutines.sync.withLock
 
 object RecurringManager {
 
+    /** 对账回查窗口：周期扣款的支付通知通常同日到达，留 3 天余量覆盖延迟 */
+    private const val RECONCILE_WINDOW_MS = 3 * 24 * 60 * 60 * 1000L
+
+    /**
+     * 商户名双向包含匹配（"爱奇艺" vs "爱奇艺会员"）。
+     * 任一方没有真实商户名（空，或通知解析失败时用渠道名兜底）时不敢按名称跳，交给同日同额兜底判断。
+     */
+    private fun merchantMatches(txMerchant: String, txSource: String, ruleMerchant: String): Boolean {
+        if (ruleMerchant.isEmpty()) return false
+        if (txMerchant.isEmpty() || txMerchant == txSource) return false
+        return txMerchant.contains(ruleMerchant) || ruleMerchant.contains(txMerchant)
+    }
+
+    private fun isSameDay(a: Long, b: Long): Boolean {
+        val ca = Calendar.getInstance().apply { timeInMillis = a }
+        val cb = Calendar.getInstance().apply { timeInMillis = b }
+        return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
+            ca.get(Calendar.DAY_OF_YEAR) == cb.get(Calendar.DAY_OF_YEAR)
+    }
+
     /** 多入口（10分钟闹钟/15分钟Worker/开机/打开App）并发调用时串行执行，防重复入账 */
     private val runMutex = Mutex()
 
@@ -71,12 +91,34 @@ object RecurringManager {
             val key = AppSettings.recurringKey(rule)
             if (AppSettings.isRecurringDone(context, key, year, periodKey)) continue
             val ts = ruleTimestamp(cal, rule, calDay, now)
+            // 对账：近 3 天内已有同额同类型且商户名匹配的真实记录（通知/短信/手动），
+            // 说明这笔周期扣款已被自动记账捕获，跳过避免重复入账。
+            // 跳过时不打 done 标记——用户若删掉那条已记账目，下次触发仍会补记。
+            val merchant = rule.merchant.ifEmpty { rule.name }
+            val recent = repo.getByRangeOnce(rule.book, ts - RECONCILE_WINDOW_MS, now)
+            val alreadyRecorded = recent.any { tx ->
+                if (tx.source == Transaction.SOURCE_RECURRING ||
+                    tx.type != rule.type ||
+                    kotlin.math.abs(tx.amount - rule.amount) >= Transaction.AMOUNT_EPSILON
+                ) return@any false
+                if (merchantMatches(tx.merchant, tx.source, merchant)) return@any true
+                // 通知没解析出商户名（用渠道名兜底）时：同额同方向且当天，也视为同一笔扣款
+                val isFallbackMerchant = tx.merchant.isEmpty() || tx.merchant == tx.source
+                isFallbackMerchant && isSameDay(tx.timestamp, ts)
+            }
+            if (alreadyRecorded) {
+                AppSettings.addNotifLog(
+                    context,
+                    "周期 | 已有同额记录，跳过：$merchant ¥${rule.amount}"
+                )
+                continue
+            }
             repo.add(
                 Transaction(
                     amount = rule.amount,
                     type = rule.type,
                     category = rule.category,
-                    merchant = rule.merchant.ifEmpty { rule.name },
+                    merchant = merchant,
                     source = Transaction.SOURCE_RECURRING,
                     timestamp = ts,
                     localTimestamp = ts,

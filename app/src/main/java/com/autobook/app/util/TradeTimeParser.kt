@@ -9,13 +9,21 @@ object TradeTimeParser {
     private val shortRegex = Regex("""(?:^|[\s，,（(于在])(\d{1,2})[:：](\d{1,2})(?:分)?(?=[^0-9:]|$)""")
     private val hourMinuteRegex = Regex("""(?:^|[\s，,（(于在])(\d{1,2})[时点](\d{1,2})分?(?=[^0-9时分]|$)""")
 
+    /** 这些词后面的日期不是交易时间（"有效期至12月31日23:59"、"截止11月30日"） */
+    private val nonTradeDatePrefix = listOf("有效期", "截止", "到期", "还款日", "之前", "日前", "为止")
+
+    private fun isNonTradeDate(text: String, matchStart: Int): Boolean {
+        val before = text.substring(0, matchStart).takeLast(6)
+        return nonTradeDatePrefix.any { before.contains(it) }
+    }
+
     fun parse(text: String, reference: Long = System.currentTimeMillis()): Long {
         val cal = Calendar.getInstance().apply { timeInMillis = reference }
         val nowYear = cal.get(Calendar.YEAR)
         val nowMonth = cal.get(Calendar.MONTH)
         val nowDay = cal.get(Calendar.DAY_OF_MONTH)
 
-        val full = fullRegex.find(text)
+        val full = fullRegex.findAll(text).firstOrNull { !isNonTradeDate(text, it.range.first) }
         if (full != null) {
             val month = full.groupValues[1].toIntOrNull() ?: return 0L
             val day = full.groupValues[2].toIntOrNull() ?: return 0L

@@ -131,4 +131,61 @@ class NotificationParserTest {
             )
         )
     }
+
+    @Test
+    fun `优惠金额不被当成交易额`() {
+        val r = NotificationParser.parse(
+            NotificationParser.ALIPAY_PKG,
+            "支付宝",
+            "成功支付，已优惠5元，实付45.00元"
+        )
+        assertEquals(45.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `退款受理中不提前记收入`() {
+        assertNull(
+            NotificationParser.parse(
+                NotificationParser.WECHAT_PKG,
+                "微信支付",
+                "你有一笔退款已受理，预计3个工作日到账25.00元"
+            )
+        )
+    }
+
+    @Test
+    fun `退款已到账正常记收入`() {
+        val r = NotificationParser.parse(
+            NotificationParser.WECHAT_PKG,
+            "微信支付",
+            "你有一笔退款已到账25.00元"
+        )
+        assertEquals(25.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, r.type)
+    }
+
+    @Test
+    fun `退款已提交不提前记收入`() {
+        assertNull(
+            NotificationParser.parse(
+                NotificationParser.WECHAT_PKG,
+                "微信支付",
+                "你有一笔退款已提交，退款中25.00元"
+            )
+        )
+    }
+
+    @Test
+    fun `指示性转账文案不误判收入`() {
+        // "请您向…转账"是要求你付款的指引，不是你的收入
+        val r = NotificationParser.parse(
+            NotificationParser.ALIPAY_PKG,
+            "支付宝",
+            "请您向财务转账500.00元完成缴费"
+        )
+        if (r != null) {
+            assertEquals(Transaction.TYPE_EXPENSE, r.type)
+        }
+    }
 }

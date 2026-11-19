@@ -1,38 +1,21 @@
 package com.autobook.app.service
 
-import android.app.AlarmManager
-import android.app.PendingIntent
-import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.provider.Settings
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
-import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 object ServiceGuard {
 
-    private const val REQUEST_CODE = 400
     private const val WORK_NAME = "autobook_guard"
 
     fun schedule(context: Context) {
-        scheduleAlarm(context)
         scheduleWorker(context)
-    }
-
-    private fun scheduleAlarm(context: Context) {
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val triggerAt = System.currentTimeMillis() + 10 * 60 * 1000
-        if (android.os.Build.VERSION.SDK_INT >= 31 && !am.canScheduleExactAlarms()) {
-            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent(context))
-        } else {
-            am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent(context))
-        }
     }
 
     private fun scheduleWorker(context: Context) {
@@ -62,39 +45,6 @@ object ServiceGuard {
         } catch (_: Exception) {
         }
     }
-
-    private fun pendingIntent(context: Context): PendingIntent {
-        val intent = Intent(context, GuardReceiver::class.java)
-        return PendingIntent.getBroadcast(
-            context, REQUEST_CODE, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-}
-
-class GuardReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        // goAsync：异步写库期间进程可被回收前保持广播存活
-        val pending = goAsync()
-        try {
-            if (ServiceGuard.isListenerEnabled(context) &&
-                !NotificationListenerService.isConnected
-            ) {
-                ServiceGuard.requestRebind(context)
-            }
-        } catch (_: Exception) {
-        }
-        ServiceGuard.schedule(context)
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-            try {
-                RecurringManager.checkAndRun(context)
-                BillReminder.checkAndNotify(context)
-            } catch (_: Exception) {
-            } finally {
-                pending.finish()
-            }
-        }
-    }
 }
 
 class GuardWorker(
@@ -113,6 +63,7 @@ class GuardWorker(
             kotlinx.coroutines.runBlocking {
                 RecurringManager.checkAndRun(applicationContext)
                 BillReminder.checkAndNotify(applicationContext)
+                AutoBackup.checkAndRun(applicationContext)
             }
             Result.success()
         } catch (_: Exception) {

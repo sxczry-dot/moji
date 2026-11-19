@@ -5,7 +5,13 @@ import kotlin.math.abs
 object DedupChecker {
 
     const val DEDUP_WINDOW_MS = 15 * 60 * 1000L
+    // 去重候选池拉取窗口：比判重窗口宽得多，覆盖跨渠道延迟到达（如短信比通知晚到几小时）的场景；
+    // 是否真判重仍由 isDuplicateOf 内部的各时间窗口决定，候选池放宽不会误吞
+    const val DEDUP_CANDIDATE_WINDOW_MS = 24 * 60 * 60 * 1000L
     const val MERCHANT_MATCH_WINDOW_MS = 90_000L
+    // 跨渠道、双方商户名都具体且一致：银行短信常延迟数分钟~数小时到达，窗口放宽到 2 小时。
+    // 同店同额两笔真实交易通常不会挤在 2 小时内；通用标题不适用（碰撞率太高）
+    const val MERCHANT_MATCH_SPECIFIC_WINDOW_MS = 2 * 60 * 60 * 1000L
     const val CROSS_SOURCE_WINDOW_MS = 180_000L
     const val SAME_SOURCE_WINDOW_MS = 10_000L
     // 同渠道且双方都未识别到商户名时，只按 3 秒判重（避免吞掉两笔同金额的不同商户真实交易）
@@ -40,7 +46,13 @@ object DedupChecker {
         }
         if (existingKey.isNotEmpty() && txKey.isNotEmpty()) {
             if (existingKey == txKey) {
-                return abs(existing.timestamp - tx.timestamp) < MERCHANT_MATCH_WINDOW_MS
+                // 商户名具体（非"交易提醒"类通用标题）且一致：延迟到达的银行短信也能判重
+                val window = if (existingKey in com.autobook.app.parser.ParseRules.genericTitles) {
+                    MERCHANT_MATCH_WINDOW_MS
+                } else {
+                    MERCHANT_MATCH_SPECIFIC_WINDOW_MS
+                }
+                return abs(existing.timestamp - tx.timestamp) < window
             }
             // 商户名不同：一方是通用标题（交易提醒/动账通知等）时 2 分钟内判重；
             // 双方都很具体（如公司全称 vs 品牌名）时仅 1 分钟内判重，避免吞掉两笔真实同金额交易

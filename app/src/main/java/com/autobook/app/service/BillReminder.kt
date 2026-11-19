@@ -7,7 +7,7 @@ import com.autobook.app.util.formatAmount
 
 /**
  * 信用卡还款提醒：解析账单短信记录的还款日，提前 3 天/1 天/当天各提醒一次。
- * 由守护任务（GuardWorker/GuardReceiver）与 App 打开时触发检查。
+ * 由守护任务（GuardWorker）与 App 打开时触发检查。
  */
 object BillReminder {
 

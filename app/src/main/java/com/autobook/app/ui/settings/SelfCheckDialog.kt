@@ -53,7 +53,6 @@ fun SelfCheckDialog(onDismiss: () -> Unit) {
     var batteryIgnored by remember {
         mutableStateOf(Permissions.isIgnoringBatteryOptimizations(context))
     }
-    var exactAlarm by remember { mutableStateOf(Permissions.canScheduleExactAlarm(context)) }
     var ruleCount by remember { mutableIntStateOf(0) }
     var recordCount by remember { mutableIntStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
@@ -72,7 +71,6 @@ fun SelfCheckDialog(onDismiss: () -> Unit) {
         smsGranted = Permissions.isSmsGranted(context)
         notifGranted = Permissions.isNotifGranted(context)
         batteryIgnored = Permissions.isIgnoringBatteryOptimizations(context)
-        exactAlarm = Permissions.canScheduleExactAlarm(context)
         onPauseOrDispose { }
     }
 
@@ -84,7 +82,7 @@ fun SelfCheckDialog(onDismiss: () -> Unit) {
     }
 
     val allOk = listenerEnabled && listenerConnected && smsGranted &&
-        notifGranted && batteryIgnored && exactAlarm
+        notifGranted && batteryIgnored
 
     AlertDialog(
         shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
@@ -137,18 +135,8 @@ fun SelfCheckDialog(onDismiss: () -> Unit) {
                         }),
                         Triple("后台运行保护", batteryIgnored, {
                             context.startActivity(
-                                Intent(
-                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                    android.net.Uri.parse("package:${context.packageName}")
-                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
-                        }),
-                        Triple("精确闹钟", exactAlarm, {
-                            context.startActivity(
-                                Intent(
-                                    Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                                    android.net.Uri.parse("package:${context.packageName}")
-                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             )
                         })
                     )

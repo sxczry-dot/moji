@@ -125,4 +125,34 @@ class SmsParserTest {
         )
         assertEquals(Transaction.TYPE_EXPENSE, r!!.type)
     }
+
+    @Test
+    fun `优惠金额不被当成交易额`() {
+        val r = SmsParser.parse(
+            "95588",
+            "您尾号1234卡8月23日支付成功，已优惠5元，实付45.00元，余额100.00元。"
+        )
+        assertEquals(45.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_EXPENSE, r.type)
+    }
+
+    @Test
+    fun `退款受理中不提前记收入`() {
+        assertNull(
+            SmsParser.parse(
+                "95588",
+                "您尾号1234卡8月23日退款已受理，预计3个工作日到账25.00元。"
+            )
+        )
+    }
+
+    @Test
+    fun `退款已到账正常记收入`() {
+        val r = SmsParser.parse(
+            "95588",
+            "您尾号1234卡8月23日退款25.00元已到账，余额100.00元。"
+        )
+        assertEquals(25.0, r!!.amount, 0.001)
+        assertEquals(Transaction.TYPE_INCOME, r.type)
+    }
 }

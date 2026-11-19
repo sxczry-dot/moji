@@ -78,6 +78,10 @@ interface TransactionDao {
     @Query("SELECT * FROM transactions WHERE book = :book AND localTimestamp >= :start AND localTimestamp < :end ORDER BY localTimestamp DESC")
     suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction>
 
+    /** 全账本时间区间查询：退款关联原消费等跨账本场景用 */
+    @Query("SELECT * FROM transactions WHERE localTimestamp >= :start AND localTimestamp < :end ORDER BY localTimestamp DESC")
+    suspend fun getByRangeAllBooksOnce(start: Long, end: Long): List<Transaction>
+
     @Query("SELECT * FROM transactions WHERE insertedAt >= :start ORDER BY insertedAt DESC")
     suspend fun getRecent(start: Long): List<Transaction>
 
@@ -107,7 +111,7 @@ interface TransactionDao {
     @androidx.room.Transaction
     suspend fun insertAndGetMonth(tx: Transaction, now: Long): SaveResult {
         val txWithArrival = tx.copy(insertedAt = now)
-        val recent = getRecent(now - DedupChecker.DEDUP_WINDOW_MS)
+        val recent = getRecent(now - DedupChecker.DEDUP_CANDIDATE_WINDOW_MS)
         val dup = recent.firstOrNull { DedupChecker.isDuplicateOf(it, txWithArrival) }
         if (dup != null) return SaveResult.Duplicate(dup)
         val id = insert(txWithArrival)

@@ -75,6 +75,8 @@ object AppSettings {
 
     fun importAllSettings(context: Context, jsonText: String) {
         val json = org.json.JSONObject(jsonText)
+        // 本机的自动备份目录授权是设备相关的：备份文件里可能不含或已失效，保留本机当前值
+        val localBackupTree = getBackupTreeUri(context)
         val editor = prefs(context).edit()
         // "覆盖"语义：先清空再写入（与恢复提示一致）
         editor.clear()
@@ -90,11 +92,31 @@ object AppSettings {
                 is Float -> editor.putFloat(k, v)
             }
         }
+        localBackupTree?.let { editor.putString(KEY_BACKUP_TREE_URI, it) }
         editor.apply()
     }
 
     fun clearAllSettings(context: Context) {
         prefs(context).edit().clear().apply()
+    }
+
+    // ===== 自动备份 =====
+
+    private const val KEY_BACKUP_TREE_URI = "backup_tree_uri"
+    private const val KEY_LAST_BACKUP_AT = "last_backup_at"
+
+    fun getBackupTreeUri(context: Context): String? =
+        prefs(context).getString(KEY_BACKUP_TREE_URI, null)
+
+    fun setBackupTreeUri(context: Context, uri: String?) {
+        prefs(context).edit().putString(KEY_BACKUP_TREE_URI, uri).apply()
+    }
+
+    fun getLastBackupAt(context: Context): Long =
+        prefs(context).getLong(KEY_LAST_BACKUP_AT, 0L)
+
+    fun setLastBackupAt(context: Context, at: Long) {
+        prefs(context).edit().putLong(KEY_LAST_BACKUP_AT, at).apply()
     }
 
     fun isAutoPaused(context: Context): Boolean =
@@ -236,7 +258,7 @@ object AppSettings {
     }
 
 
-    const val MAX_NOTIF_LOG = 30
+    const val MAX_NOTIF_LOG = 100
 
     fun addNotifLog(context: Context, line: String) {
         val clean = line.replace('\n', ' ').replace('\r', ' ')

@@ -1,4 +1,4 @@
-﻿package com.autobook.app.ui.settings
+package com.autobook.app.ui.settings
 
 import android.content.Context
 import android.provider.Settings
@@ -110,7 +110,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     var listenerEnabled by remember { mutableStateOf(com.autobook.app.util.Permissions.isNotificationListenerEnabled(context)) }
     var smsGranted by remember { mutableStateOf(com.autobook.app.util.Permissions.isSmsGranted(context)) }
     var batteryIgnored by remember { mutableStateOf(com.autobook.app.util.Permissions.isIgnoringBatteryOptimizations(context)) }
-    var exactAlarm by remember { mutableStateOf(com.autobook.app.util.Permissions.canScheduleExactAlarm(context)) }
     var resultMessage by remember { mutableStateOf<String?>(null) }
     var showRecurring by remember { mutableStateOf(false) }
     var showBookManager by remember { mutableStateOf(false) }
@@ -162,7 +161,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         smsGranted = com.autobook.app.util.Permissions.isSmsGranted(context)
         batteryIgnored = com.autobook.app.util.Permissions.isIgnoringBatteryOptimizations(context)
         notifGranted = com.autobook.app.util.Permissions.isNotifGranted(context)
-        exactAlarm = com.autobook.app.util.Permissions.canScheduleExactAlarm(context)
         onPauseOrDispose { }
     }
 
@@ -184,23 +182,18 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         if (uri != null) {
             scope.launch(Dispatchers.IO) {
                 try {
-                    val json = org.json.JSONObject()
-                    json.put(
-                        "settings",
-                        org.json.JSONObject(
-                            com.autobook.app.util.AppSettings.exportAllSettings(context)
-                        )
-                    )
-                    json.put(
-                        "csv",
-                        CsvCodec.encode(AutoBookApp.instance.repository.getAllOnce())
-                    )
-                    val data = ("ABK1\n" + json.toString()).toByteArray(Charsets.UTF_8)
+                    val data = com.autobook.app.data.BackupCodec.encode(
+                        com.autobook.app.util.AppSettings.exportAllSettings(context),
+                        AutoBookApp.instance.repository.getAllOnce()
+                    ).toByteArray(Charsets.UTF_8)
                     val out = context.contentResolver.openOutputStream(uri)
                     if (out == null) {
                         resultMessage = "备份失败：无法写入目标文件"
                     } else {
                         out.use { it.write(data) }
+                        com.autobook.app.util.AppSettings.setLastBackupAt(
+                            context, System.currentTimeMillis()
+                        )
                         resultMessage = "完整备份已保存"
                     }
                 } catch (e: Exception) {
@@ -218,8 +211,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 try {
                     val text = context.contentResolver.openInputStream(uri)
                         ?.bufferedReader()?.readText()
-                    if (text != null && text.startsWith("ABK1\n")) {
-                        restorePending = text.removePrefix("ABK1\n")
+                    if (text != null && com.autobook.app.data.BackupCodec.isBackup(text)) {
+                        restorePending = text
                     } else {
                         resultMessage = "不是有效的默记备份文件"
                     }
@@ -230,17 +223,49 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         }
     }
 
-    val createDocLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("text/csv")
+    var backupTreeUri by remember {
+        mutableStateOf(com.autobook.app.util.AppSettings.getBackupTreeUri(context))
+    }
+    var lastBackupAt by remember {
+        mutableStateOf(com.autobook.app.util.AppSettings.getLastBackupAt(context))
+    }
+    // 自动备份目录选择：持久化读授权，之后每周静默写入
+    val backupTreeLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+            }
+            com.autobook.app.util.AppSettings.setBackupTreeUri(context, uri.toString())
+            backupTreeUri = uri.toString()
+            // 立即补一次备份（lastBackupAt=0 时间隔检查自然通过），让用户马上确认目录选对了
+            scope.launch(Dispatchers.IO) {
+                val ok = com.autobook.app.service.AutoBackup.checkAndRun(context)
+                if (ok) lastBackupAt = com.autobook.app.util.AppSettings.getLastBackupAt(context)
+                resultMessage = if (ok) "自动备份已开启，已写入第一份备份" else "自动备份已开启（首次备份将在后台进行）"
+            }
+        }
+    }
+
+    val createDocLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->        if (uri != null) {
             scope.launch(Dispatchers.IO) {
                 try {
                     val out = context.contentResolver.openOutputStream(uri)
                     if (out == null) {
                         resultMessage = "导出失败：无法写入目标文件"
                     } else {
-                        out.use { it.write(exportPendingCsv.toByteArray(Charsets.UTF_8)) }
+                        // 加 BOM：Excel 直接双击打开 UTF-8 CSV 时中文不乱码（导入端已兼容带 BOM）
+                        out.use {
+                            it.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                            it.write(exportPendingCsv.toByteArray(Charsets.UTF_8))
+                        }
                         exportedUri = uri.toString()
                         resultMessage = "已导出 ${exportPendingCount} 笔记录"
                     }
@@ -405,21 +430,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 ) {
                     context.startActivity(
                         android.content.Intent(
-                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                            android.net.Uri.parse("package:${context.packageName}")
-                        ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                }
-
-                PermissionRow(
-                    title = "精确闹钟（让自愈检查在深睡时也准时）",
-                    granted = exactAlarm,
-                    actionLabel = if (exactAlarm) null else "去开启"
-                ) {
-                    context.startActivity(
-                        android.content.Intent(
-                            Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,
-                            android.net.Uri.parse("package:${context.packageName}")
+                            Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS
                         ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                     )
                 }
@@ -609,6 +620,41 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = if (backupTreeUri != null) "自动备份：已开启（每 7 天）" else "自动备份：未开启",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (backupTreeUri != null && lastBackupAt > 0) {
+                            Text(
+                                text = "上次备份：" + java.text.SimpleDateFormat(
+                                    "yyyy-MM-dd HH:mm", java.util.Locale.CHINA
+                                ).format(java.util.Date(lastBackupAt)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = {
+                            if (backupTreeUri != null) {
+                                com.autobook.app.util.AppSettings.setBackupTreeUri(context, null)
+                                backupTreeUri = null
+                                resultMessage = "自动备份已关闭"
+                            } else {
+                                backupTreeLauncher.launch(null)
+                            }
+                        }
+                    ) {
+                        Text(
+                            if (backupTreeUri != null) "关闭" else "选择目录",
+                            fontSize = 12.sp
+                        )
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 Text(
                     text = "导出为 CSV 文件，可用 Excel/WPS 打开编辑；导入时选择同格式的 CSV 文件即可。",
@@ -1368,7 +1414,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                                 val info =
                                     "设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n" +
                                         "系统：Android ${android.os.Build.VERSION.RELEASE}\n" +
-                                        "应用版本：5.1\n" +
+                                        "应用版本：${com.autobook.app.BuildConfig.VERSION_NAME}\n" +
                                         "账单记录：$count 笔"
                                 clipboard.setText(
                                     androidx.compose.ui.text.AnnotatedString(info)
@@ -1385,7 +1431,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(24.dp))
         Text(
-            text = "默记 v5.1",
+            text = "默记 v${com.autobook.app.BuildConfig.VERSION_NAME}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.CenterHorizontally)
@@ -1753,15 +1799,19 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     onClick = {
                         scope.launch(Dispatchers.IO) {
                             try {
-                                val json = org.json.JSONObject(pending)
-                                val txs = CsvCodec.decode(json.getString("csv"))
+                                val backup = com.autobook.app.data.BackupCodec.decode(pending)
+                                if (backup == null) {
+                                    resultMessage = "备份文件已损坏"
+                                    restorePending = null
+                                    return@launch
+                                }
                                 // 先导入设置（失败即中止，不动账本），再覆盖账本：避免"半成功"后旧数据已被覆盖
                                 com.autobook.app.util.AppSettings.importAllSettings(
                                     context,
-                                    json.getString("settings")
+                                    backup.settingsJson
                                 )
-                                AutoBookApp.instance.repository.replaceAll(txs)
-                                resultMessage = "恢复完成：${txs.size} 笔记录"
+                                AutoBookApp.instance.repository.replaceAll(backup.txs)
+                                resultMessage = "恢复完成：${backup.txs.size} 笔记录"
                                 // 覆盖式恢复后重建界面，刷新全部开关/账本状态
                                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                                     (context as? android.app.Activity)?.recreate()

@@ -148,9 +148,33 @@ class DedupCheckerTest {
 
     @Test
     fun `导入记录空来源不参与判重`() {
-        // 导入记录（来源兜底为"导入"）与真实通知不会因空来源直接判重
+        // 导入记录（来源兜底为"导入"）与真实通知：有具体商户名可判重
         val imported = tx(source = "导入", merchant = "美团", timestamp = t0)
         val notif = tx(source = "微信", merchant = "美团", timestamp = t0 + 30_000)
         assertTrue(DedupChecker.isDuplicateOf(imported, notif))
+    }
+
+    @Test
+    fun `跨渠道具体商户名一致1小时内仍判重`() {
+        // 银行短信比支付通知晚到 40 分钟：同额同商户，应判重合并
+        val notif = tx(source = "微信", merchant = "美团", timestamp = t0)
+        val sms = tx(source = "短信", merchant = "美团", timestamp = t0 + 40 * 60_000)
+        assertTrue(DedupChecker.isDuplicateOf(notif, sms))
+    }
+
+    @Test
+    fun `跨渠道具体商户名一致超过2小时不判重`() {
+        // 窗口上限 2 小时：超出后视为两笔真实交易
+        val notif = tx(source = "微信", merchant = "美团", timestamp = t0)
+        val sms = tx(source = "短信", merchant = "美团", timestamp = t0 + 3 * 3600_000L)
+        assertFalse(DedupChecker.isDuplicateOf(notif, sms))
+    }
+
+    @Test
+    fun `通用标题商户名不享受宽窗口`() {
+        // "交易提醒"这类通用标题碰撞率高，仍按 90 秒短窗口
+        val notif = tx(source = "微信", merchant = "交易提醒", timestamp = t0)
+        val sms = tx(source = "短信", merchant = "交易提醒", timestamp = t0 + 40 * 60_000)
+        assertFalse(DedupChecker.isDuplicateOf(notif, sms))
     }
 }

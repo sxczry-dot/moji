@@ -141,10 +141,8 @@ fun OnboardingScreen(onDone: () -> Unit) {
             icon = androidx.compose.material.icons.Icons.Outlined.BatteryChargingFull
         ) {
             context.startActivity(
-                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                    data = android.net.Uri.parse("package:${context.packageName}")
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
+                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
         }
 

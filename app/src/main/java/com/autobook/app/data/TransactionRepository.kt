@@ -24,6 +24,10 @@ class TransactionRepository(context: Context) {
     suspend fun getByRangeOnce(book: String, start: Long, end: Long): List<Transaction> =
         dao.getByRangeOnce(book, start, end)
 
+    /** 全账本时间区间查询（退款关联原消费：消费可能记在非默认账本） */
+    suspend fun getByRangeAllBooksOnce(start: Long, end: Long): List<Transaction> =
+        dao.getByRangeAllBooksOnce(start, end)
+
     suspend fun add(tx: Transaction): Long {
         // 补到达时间：让手动/周期记录参与自动记账的去重候选池，避免与通知重复记账
         return dao.insert(
